@@ -1,12 +1,12 @@
 {
-  "name": "advanced-fingerprint",
+  "name": "whouser",
   "version": "1.0.0",
-  "description": "Advanced browser fingerprinting library with fuzzy matching - better than FingerprintJS and ThumbmarkJS",
+  "description": "Advanced browser fingerprinting with 3-part weighted hashing and fuzzy matching - no cookies, localStorage, or IP needed",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
     "test": "echo \"No tests yet\"",
-    "build": "echo \"No build process needed\""
+    "build": "echo \"No build process needed - pure ES Module\""
   },
   "keywords": [
     "fingerprint",
@@ -15,18 +15,21 @@
     "fingerprinting",
     "privacy",
     "identification",
-    "fuzzy-matching"
+    "fuzzy-matching",
+    "whouser",
+    "client-side",
+    "no-cookies"
   ],
-  "author": "Your Name",
+  "author": "Parham PA",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/advanced-fingerprint"
+    "url": "https://github.com/parhampa/whouser"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/advanced-fingerprint/issues"
+    "url": "https://github.com/parhampa/whouser/issues"
   },
-  "homepage": "https://github.com/yourusername/advanced-fingerprint#readme",
+  "homepage": "https://github.com/parhampa/whouser#readme",
   "engines": {
     "node": ">=14.0.0"
   },

@@ -7,8 +7,13 @@ import TimingSignals from './signals/timing-signals.js';
 import Helpers from './utils/helpers.js';
 
 /**
- * کلاس اصلی کتابخانه‌ی اثر انگشت
+ * کلاس اصلی کتابخانه‌ی whouser
  * تمام سیگنال‌ها را جمع‌آوری کرده، وزن‌دهی کرده و هش نهایی را تولید می‌کند
+ * 
+ * @example
+ * const fp = new Fingerprint({ accuracy: 'high' });
+ * const result = await fp.getFingerprint();
+ * console.log(result.hash); // "a3f5b2-9d4c7e-1f8a3d"
  */
 class Fingerprint {
   constructor(options = {}) {
@@ -338,5 +343,4 @@ class Fingerprint {
   }
 }
 
-// خروجی پیش‌فرض برای استفاده
 export default Fingerprint;

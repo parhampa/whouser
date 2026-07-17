@@ -1,7 +1,7 @@
 // src/utils/helpers.js
 
 /**
- * توابع کمکی عمومی برای کتابخانه اثر انگشت
+ * توابع کمکی پایه برای کتابخانه whouser
  * بدون وابستگی به هیچ کتابخانه‌ی دیگری
  */
 
@@ -82,13 +82,12 @@ export const Helpers = {
   },
 
   /**
-   * بررسی اینکه آیا یک سیگنال باید نادیده گرفته شود (مثلاً در حالت Private/Incognito)
+   * بررسی اینکه آیا مرورگر در حالت مخفی (Incognito/Private) است
    */
   isIncognito() {
     return new Promise((resolve) => {
-      // ساده‌ترین روش: بررسی وجود localStorage با try/catch
       try {
-        const test = 'test';
+        const test = 'whouser_test';
         localStorage.setItem(test, test);
         localStorage.removeItem(test);
         resolve(false);
@@ -96,6 +95,47 @@ export const Helpers = {
         resolve(true);
       }
     });
+  },
+
+  /**
+   * دریافت لیست فونت‌های نصب‌شده روی سیستم
+   * با استفاده از تکنیک Flash of Unstyled Text (FOUT)
+   */
+  getInstalledFonts() {
+    return Helpers.safeExecute(() => {
+      const fontList = [
+        'Arial', 'Helvetica', 'Times New Roman', 'Times', 'Courier New',
+        'Courier', 'Verdana', 'Georgia', 'Palatino', 'Garamond',
+        'Bookman', 'Comic Sans MS', 'Trebuchet MS', 'Arial Black',
+        'Impact', 'Lucida Grande', 'Tahoma', 'Geneva', 'Verdana',
+        'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald',
+        'Raleway', 'Poppins', 'Nunito', 'Merriweather', 'Playfair Display'
+      ];
+      
+      const baseFonts = ['monospace', 'sans-serif', 'serif'];
+      const testString = 'mmmmmmmmmmlli';
+      const testSize = '72px';
+      
+      // ایجاد canvas برای تست
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return [];
+      
+      ctx.font = testSize + ' ' + baseFonts[0];
+      const baseWidth = ctx.measureText(testString).width;
+      
+      const installed = [];
+      for (const font of fontList) {
+        ctx.font = testSize + ' "' + font + '", ' + baseFonts[0];
+        const width = ctx.measureText(testString).width;
+        if (width !== baseWidth) {
+          installed.push(font);
+        }
+      }
+      
+      // فقط ۱۰ فونت اول را برمی‌گردانیم تا حجم هش زیاد نشود
+      return installed.slice(0, 10);
+    }, []);
   }
 };
 

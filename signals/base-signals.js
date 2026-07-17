@@ -4,7 +4,8 @@ import Helpers from '../utils/helpers.js';
 
 /**
  * ماژول سیگنال‌های پایه
- * شامل اطلاعات سیستم‌عامل، سخت‌افزار، صفحه‌نمایش و مرورگر
+ * شامل اطلاعات سیستم‌عامل، سخت‌افزار، صفحه‌نمایش، مرورگر، زبان و حالت مخفی
+ * این سیگنال‌ها بالاترین وزن را در هش نهایی دارند (بخش Hardware و Software)
  */
 export const BaseSignals = {
   /**
@@ -93,7 +94,7 @@ export const BaseSignals = {
     return Helpers.safeExecute(() => {
       const { browser, version } = Helpers.detectBrowser();
       // نسخه را به دسته‌های اصلی تقسیم می‌کنیم (مثلاً ۱۲۰، ۱۲۱، ...)
-      const versionCategory = Math.floor(version / 10) * 10; // 120, 130, ...
+      const versionCategory = Math.floor(version / 10) * 10;
       return `${browser}|v${versionCategory}`;
     }, 'unknown|0');
   },

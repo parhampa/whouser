@@ -9,7 +9,7 @@ import Helpers from '../utils/helpers.js';
  */
 export const EnvironmentSignals = {
   /**
-   * سیگنال ۱۲: اطلاعات شبکه (بدون IP)
+   * سیگنال ۱۳: اطلاعات شبکه (بدون IP)
    * شامل نوع اتصال و ویژگی‌های شبکه
    */
   getNetworkInfo() {
@@ -34,7 +34,7 @@ export const EnvironmentSignals = {
   },
 
   /**
-   * سیگنال ۱۳: پشتیبانی از ویژگی‌های HTML5 و APIها
+   * سیگنال ۱۴: پشتیبانی از ویژگی‌های HTML5 و APIها
    * بررسی وجود APIهای مختلف در مرورگر
    */
   getFeatureSupport() {
@@ -83,7 +83,7 @@ export const EnvironmentSignals = {
   },
 
   /**
-   * سیگنال ۱۴: اطلاعات دستگاه‌های ورودی (ماوس، تاچ، کیبورد)
+   * سیگنال ۱۵: اطلاعات دستگاه‌های ورودی (ماوس، تاچ، کیبورد)
    * بدون نیاز به دسترسی، فقط قابلیت‌ها را بررسی می‌کنیم
    */
   getInputDevices() {
@@ -111,7 +111,7 @@ export const EnvironmentSignals = {
   },
 
   /**
-   * سیگنال ۱۵: تنظیمات صفحه‌کلید و زبان
+   * سیگنال ۱۶: تنظیمات صفحه‌کلید و زبان
    */
   getKeyboardInfo() {
     return Helpers.safeExecute(() => {
@@ -130,7 +130,7 @@ export const EnvironmentSignals = {
   },
 
   /**
-   * سیگنال ۱۶: بررسی وجود AdBlocker یا extensions
+   * سیگنال ۱۷: بررسی وجود AdBlocker یا extensions
    * با استفاده از تکنیک‌های غیرمستقیم
    */
   getAdBlockerStatus() {
@@ -162,7 +162,7 @@ export const EnvironmentSignals = {
   },
 
   /**
-   * سیگنال ۱۷: ویژگی‌های Battery (در صورت موجود بودن)
+   * سیگنال ۱۸: ویژگی‌های Battery (در صورت موجود بودن)
    * این سیگنال وزن کمی دارد اما می‌تواند مفید باشد
    */
   async getBatteryInfo() {
