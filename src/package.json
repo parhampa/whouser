@@ -1,0 +1,59 @@
+{
+  "name": "whouser",
+  "version": "1.0.0",
+  "description": "Advanced browser fingerprinting with 3-part weighted hashing and fuzzy matching - no cookies, localStorage, or IP",
+  "main": "dist/whouser.cjs.js",
+  "module": "dist/whouser.esm.js",
+  "browser": "dist/whouser.min.js",
+  "type": "module",
+  "scripts": {
+    "test": "vitest",
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "lint": "eslint src --ext .js",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": [
+    "fingerprint",
+    "browser-fingerprint",
+    "device-fingerprint",
+    "fingerprinting",
+    "privacy",
+    "identification",
+    "fuzzy-matching",
+    "whouser",
+    "client-side",
+    "no-cookies"
+  ],
+  "author": "Parham PA",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/parhampa/whouser"
+  },
+  "bugs": {
+    "url": "https://github.com/parhampa/whouser/issues"
+  },
+  "homepage": "https://github.com/parhampa/whouser#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
+    "eslint": "^8.56.0",
+    "rollup": "^4.0.0",
+    "vitest": "^1.0.0"
+  },
+  "browserslist": [
+    "last 2 chrome versions",
+    "last 2 firefox versions",
+    "last 2 safari versions",
+    "last 2 edge versions"
+  ]
+}

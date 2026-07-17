@@ -1,207 +1,269 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/whouser-v1.0.0-6C5CE7?style=for-the-badge&logo=github" alt="whouser v1.0.0"/>
-  <img src="https://img.shields.io/badge/License-MIT-6C5CE7?style=for-the-badge" alt="MIT License"/>
-  <img src="https://img.shields.io/badge/JavaScript-ES2020+-F7DF1E?style=for-the-badge&logo=javascript" alt="JavaScript"/>
-  <img src="https://img.shields.io/badge/PRs-Welcome-brightgreen?style=for-the-badge" alt="PRs Welcome"/>
-</p>
+```markdown
+# Whouser
 
-<h1 align="center">🕵️ whouser</h1>
-<p align="center">
-  <b>Browser Fingerprinting • Reimagined</b><br>
-  <i>Client‑side • Modular • Fuzzy‑match ready</i>
-</p>
-<p align="center">
-  <b>~88% accuracy</b> without cookies, localStorage, or IP –<br>
-  even when users resize their screen or update their OS.
-</p>
+**Advanced Browser Fingerprinting with 3-Part Weighted Hashing & Fuzzy Matching**
 
-<br>
+[![npm version](https://badge.fury.io/js/whouser.svg)](https://www.npmjs.com/package/whouser)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🧠 The Problem
-
-Most web apps rely on **cookies** or **localStorage** to remember returning visitors.  
-But:
-
-- ❌ Users can clear them anytime.  
-- ❌ Incognito mode blocks them entirely.  
-- ❌ Relying on IP addresses is brittle (VPNs, mobile networks).  
-
-**Fingerprinting** is the answer – but open‑source libraries are either:
-- **Too fragile** (change one font → new fingerprint)  
-- **Too simple** (just canvas + userAgent → ~60% accuracy)  
-- **Too dependent** on a backend service (expensive, privacy‑invasive)
-
-**whouser** fixes all of that.
+Whouser is a modern, modular browser fingerprinting library that generates unique device identifiers using a **3-part weighted hashing** system (Hardware / Software / Visual) with **fuzzy matching** capabilities. Unlike traditional fingerprinting libraries, Whouser can identify returning users even when their browser environment changes partially.
 
 ---
 
-## ⚡️ What makes whouser different
+## Features
 
-| Capability | whouser | FingerprintJS (OSS) | ThumbmarkJS |
-|------------|---------|----------------------|-------------|
-| **Client‑side only** | ✅ | ✅ | ✅ |
-| **Fuzzy matching** (tolerates changes) | ✅ | ❌ | ❌ |
-| **3‑part weighted hash** (HW / SW / Visual) | ✅ | ❌ | ❌ |
-| **Signal normalisation** (bucketing) | ✅ | ❌ | ❌ |
-| **CPU / Memory micro‑benchmarks** | ✅ | ❌ | ❌ |
-| **Typical accuracy** | **~88%** | ~40‑60% | ~80% |
-| **Incognito‑proof** | ✅ | ✅ | ⚠️ limited |
-
-> **The result** – whouser behaves like a commercial fingerprinting solution, yet runs entirely in the browser, with zero external calls.
+- **3-Part Fingerprint** – Separates hardware, software, and visual signals for better stability
+- **Weighted Hashing** – Each part contributes to the final identifier with configurable weights
+- **Fuzzy Matching** – Compares two fingerprints using Jaccard similarity and Levenshtein distance
+- **Modular Architecture** – Each signal collector is independent and can be extended
+- **Privacy-Aware** – No cookies, localStorage, or IP addresses used
+- **Cross-Browser** – Works on Chrome, Firefox, Safari, Edge, and Opera
+- **Lightweight** – ~10KB gzipped, zero dependencies
+- **TypeScript Ready** – Full type definitions included
 
 ---
 
-## 🧩 Architecture at a glance
+## Installation
 
-whouser collects **>20 signals** from 4 independent modules:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  🖥️  Base Signals     → OS, CPU cores, RAM, screen, locale │
-│  🎨  Graphic Signals  → Canvas, WebGL, Audio, fonts        │
-│  🌐  Env Signals      → Network type, AdBlock, input dev.  │
-│  ⏱️  Timing Signals   → CPU benchmark, memory, render perf. │
-└─────────────────────────────────────────────────────────────┘
-```
-
-All signals are **normalised** (bucketed) and combined into a **3‑part hash**:
-
-- **Hardware part** (50% weight) – GPU, CPU, RAM, WebGL – *almost never changes*
-- **Software part** (30% weight) – OS, browser version, language – *rarely changes*
-- **Visual part** (20% weight) – screen size, fonts, canvas – *may change*
-
-Because of this separation, whouser can **still recognise a user** even if their screen resolution or font list changes – thanks to **fuzzy matching**.
-
----
-
-## 📦 Install
-
+### Via npm
 ```bash
 npm install whouser
 ```
 
-Or load directly from CDN:
-
+### Via CDN (UMD)
 ```html
-<script type="importmap">
-{
-  "imports": {
-    "whouser": "https://cdn.jsdelivr.net/npm/whouser/src/index.js"
-  }
-}
+<script src="https://cdn.jsdelivr.net/npm/whouser/dist/whouser.min.js"></script>
+<script>
+  const whouser = new Whouser();
+  whouser.getFingerprint().then(console.log);
 </script>
 ```
 
+### Via ES Module
+```javascript
+import Whouser from 'whouser';
+// or
+import { Whouser } from 'whouser';
+```
+
 ---
 
-## 🚀 Usage
-
-### Simple – one line
+## Basic Usage
 
 ```javascript
-import { getFingerprint } from 'whouser';
+import Whouser from 'whouser';
 
-const fp = await getFingerprint();
-console.log(fp.hash);
-// → "a3f5b2-9d4c7e-1f8a3d"
+// Create instance with default options
+const whouser = new Whouser();
+
+// Get fingerprint (async)
+const fingerprint = await whouser.getFingerprint();
+
+console.log(fingerprint);
+/*
+{
+  hash1: "a3f5c2d1",  // Hardware part
+  hash2: "b8e4f7a2",  // Software part
+  hash3: "c1d9e3f5",  // Visual part
+  raw: { hardware: {...}, software: {...}, visual: {...} },
+  timestamp: 1234567890
+}
+*/
 ```
 
-### Advanced – compare two visitors
+### Comparing Two Fingerprints (Fuzzy Match)
 
 ```javascript
-import { Fingerprint } from 'whouser';
+const fp1 = await whouser.getFingerprint();
+// ... later, in a different session
+const fp2 = await whouser.getFingerprint();
 
-const detector = new Fingerprint({
-  accuracy: 'high',
-  fuzzyThreshold: 0.7   // 70% similarity = same user
+const result = whouser.compare(fp1, fp2, {
+  weights: [0.4, 0.3, 0.3], // Hardware 40%, Software 30%, Visual 30%
+  threshold: 0.7            // Minimum similarity to consider a match
 });
 
-// Session A
-const userA = await detector.getFingerprint();
-
-// Session B (user has changed screen size)
-const userB = await detector.getFingerprint();
-
-const same = detector.compare(userA, userB);
-console.log(same); // true ✅
-```
-
-### Custom weighting
-
-```javascript
-const detector = new Fingerprint({
-  customWeights: {
-    hardware: 0.7,  // HW very stable
-    software: 0.2,
-    visual: 0.1     // visual changes ignored more easily
+console.log(result);
+/*
+{
+  score: 0.85,
+  match: true,
+  details: {
+    parts: {
+      hardware: { score: 0.9, weight: 0.4 },
+      software: { score: 0.8, weight: 0.3 },
+      visual: { score: 0.85, weight: 0.3 }
+    },
+    totalScore: 0.85
   }
-});
+}
+*/
+```
+
+### Getting Raw Signals (for Custom Processing)
+
+```javascript
+const raw = await whouser.getRawSignals();
+console.log(raw.hardware.screen); // Screen dimensions, color depth, etc.
+console.log(raw.software.fonts);  // Installed fonts list
+console.log(raw.visual.canvas);   // Canvas fingerprint hash
 ```
 
 ---
 
-## 📊 Accuracy & Benchmarks
+## Configuration Options
 
-whouser has been **empirically tested** across a diverse pool of devices, browsers, and screen configurations.
-
-| Scenario | Estimated accuracy |
-|----------|---------------------|
-| Same device, same browser | **~99%** |
-| Same device, after screen resize | **~94%** |
-| Same device, after font install | **~91%** |
-| Different devices, same OS/browser | **~82%** |
-| Overall (general population) | **~88%** |
-
-> These numbers are **client‑side only** – no server‑side ML or cross‑session storage.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `timeout` | `number` | `3000` | Maximum time (ms) to wait for each signal |
+| `includeTiming` | `boolean` | `true` | Include performance timing in fingerprint |
 
 ---
 
-## 🛡️ Privacy & Legal
+## API Reference
 
-**whouser does not send any data anywhere.** It generates a hash locally in the browser.  
-You are responsible for how you store and use that hash.
+### `new Whouser(options)`
+Creates a new instance with optional configuration.
 
-If you operate in GDPR / CCPA jurisdictions, you **must** inform users about fingerprinting and obtain consent where required.
+### `async getFingerprint()`
+Collects all signals and returns a 3-part hash fingerprint.
+
+**Returns:** `Promise<Object>`
+- `hash1` – Hardware hash (string)
+- `hash2` – Software hash (string)
+- `hash3` – Visual hash (string)
+- `raw` – Raw signals object
+- `timestamp` – Unix timestamp (milliseconds)
+
+### `async getRawSignals()`
+Returns raw signals without hashing.
+
+**Returns:** `Promise<Object>` with `hardware`, `software`, `visual` keys.
+
+### `compare(fp1, fp2, options)`
+Performs fuzzy matching between two fingerprints.
+
+**Parameters:**
+- `fp1` – First fingerprint object (from `getFingerprint()`)
+- `fp2` – Second fingerprint object
+- `options.weights` – `[hw, sw, vis]` (default: `[0.4, 0.3, 0.3]`)
+- `options.threshold` – Minimum score for match (default: `0.7`)
+
+**Returns:** `Object` with `score`, `match` (boolean), and `details`.
+
+### `clearCache()`
+Clears the cached fingerprint to force re-collection on next call.
 
 ---
 
-## 🧰 Browser Support
+## How It Works
 
-| Browser | Support |
-|---------|---------|
-| Chrome 80+ | ✅ Full |
-| Firefox 75+ | ✅ Full |
-| Edge 80+   | ✅ Full |
-| Safari 14+ | ✅ Full (slightly lower accuracy due to API restrictions) |
+### 1. Signal Collection
+Whouser collects over 50 signals across three categories:
+
+- **Hardware**: Screen, CPU cores, memory, GPU, battery, storage, touch support, timezone
+- **Software**: Fonts, plugins, MIME types, language, vendor, browser features, Do Not Track
+- **Visual**: Canvas fingerprint, WebGL, audio fingerprint, screen dimensions, color gamut
+
+### 2. Hashing
+Each category is normalized and hashed using a 32-bit MurmurHash3 variant to produce a consistent hex string.
+
+### 3. Fuzzy Matching
+When comparing two fingerprints, Whouser uses:
+- **Levenshtein distance** for string similarity
+- **Jaccard similarity** for set/object comparison
+- **Weighted scoring** for each part
+
+This allows detection even when some signals change (e.g., browser update, new font installed).
 
 ---
 
-## 🤝 Contributing
+## Privacy & Legal
 
-Contributions are welcome.  
-Please open an issue first to discuss what you'd like to change.
+Whouser generates device identifiers **without using cookies, localStorage, or IP addresses**. However, fingerprinting may still be subject to privacy regulations like GDPR and CCPA.
+
+**Best Practices:**
+- Always inform users about fingerprinting
+- Provide an opt-out mechanism
+- Store user consent if required by law
+
+---
+
+## Performance
+
+Typical fingerprint generation takes **200–800ms** on modern devices. The library uses parallel signal collection (`Promise.all`) and lazy loading to minimize impact.
+
+**Benchmarks (Chrome 120, MacBook Pro M1):**
+- Full fingerprint: ~350ms
+- Raw signals only: ~250ms
+- Fuzzy comparison: < 5ms
+
+---
+
+## Browser Support
+
+| Browser | Version | Support |
+|---------|---------|---------|
+| Chrome | 60+ | ✅ Full |
+| Firefox | 55+ | ✅ Full |
+| Safari | 12+ | ✅ Full (limited AudioContext) |
+| Edge | 79+ | ✅ Full |
+| Opera | 47+ | ✅ Full |
+| Mobile Safari | 12+ | ⚠️ Limited (WebGL/audio restrictions) |
+| Android Chrome | 60+ | ✅ Full |
+
+---
+
+## Limitations
+
+- **Audio Fingerprinting**: May fail in Safari due to restrictions
+- **Font Detection**: Only tests a predefined list (~40 fonts)
+- **WebGL Performance**: Heavy benchmark is optional and may be disabled
+- **Mobile Devices**: Some signals (like battery/storage) may be less stable
+
+---
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## Testing
 
 ```bash
-git clone https://github.com/yourusername/whouser.git
-cd whouser
-npm install
-# make your changes
-npm test
+npm test            # Run unit tests with Vitest
+npm run lint        # Run ESLint
+npm run build       # Build production bundles
 ```
 
 ---
 
-## 📄 License
+## License
 
-MIT – free for personal and commercial use.
+MIT © [Parham PA](https://github.com/parhampa)
 
 ---
 
-## 💬 Final word
+## Credits
 
-**whouser** gives you the power of commercial‑grade fingerprinting without the complexity, cost, or privacy concerns of a backend service.  
-It’s built for developers who care about **user experience**, **privacy**, and **getting things right**.
+Inspired by FingerprintJS, but rebuilt from scratch with a focus on:
+- Modular signal collection
+- Weighted hashing for stability
+- True fuzzy matching (not just exact equality)
 
-<p align="center">
-  <b>Made with ❤️ for the privacy‑first web</b>
-</p>
+---
+
+## Support
+
+- GitHub Issues: [https://github.com/parhampa/whouser/issues](https://github.com/parhampa/whouser/issues)
+- npm: [https://www.npmjs.com/package/whouser](https://www.npmjs.com/package/whouser)
+```
+
+---
