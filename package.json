@@ -1,0 +1,39 @@
+{
+  "name": "advanced-fingerprint",
+  "version": "1.0.0",
+  "description": "Advanced browser fingerprinting library with fuzzy matching - better than FingerprintJS and ThumbmarkJS",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"No tests yet\"",
+    "build": "echo \"No build process needed\""
+  },
+  "keywords": [
+    "fingerprint",
+    "browser-fingerprint",
+    "device-fingerprint",
+    "fingerprinting",
+    "privacy",
+    "identification",
+    "fuzzy-matching"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/advanced-fingerprint"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/advanced-fingerprint/issues"
+  },
+  "homepage": "https://github.com/yourusername/advanced-fingerprint#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "browserslist": [
+    "last 2 chrome versions",
+    "last 2 firefox versions",
+    "last 2 safari versions",
+    "last 2 edge versions"
+  ]
+}
