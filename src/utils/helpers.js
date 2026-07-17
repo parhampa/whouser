@@ -1,142 +1,210 @@
 // src/utils/helpers.js
 
 /**
- * توابع کمکی پایه برای کتابخانه whouser
- * بدون وابستگی به هیچ کتابخانه‌ی دیگری
+ * Safely execute a function and return fallback if it fails
+ * @param {Function} fn - Function to execute
+ * @param {any} fallback - Value to return if function throws
+ * @returns {any} Result of fn or fallback
  */
-
-export const Helpers = {
-  /**
-   * تشخیص نوع مرورگر و نسخه‌ی اصلی آن
-   * برای وزن‌دهی به سیگنال‌ها بر اساس محدودیت‌های مرورگر
-   */
-  detectBrowser() {
-    const ua = navigator.userAgent.toLowerCase();
-    let browser = 'unknown';
-    let version = 0;
-
-    if (ua.includes('firefox')) {
-      browser = 'firefox';
-      const match = ua.match(/firefox\/(\d+)/);
-      version = match ? parseInt(match[1], 10) : 0;
-    } else if (ua.includes('safari') && !ua.includes('chrome')) {
-      browser = 'safari';
-      const match = ua.match(/version\/(\d+)/);
-      version = match ? parseInt(match[1], 10) : 0;
-    } else if (ua.includes('chrome')) {
-      browser = 'chrome';
-      const match = ua.match(/chrome\/(\d+)/);
-      version = match ? parseInt(match[1], 10) : 0;
-    } else if (ua.includes('edg')) {
-      browser = 'edge';
-      const match = ua.match(/edg\/(\d+)/);
-      version = match ? parseInt(match[1], 10) : 0;
-    }
-    return { browser, version };
-  },
-
-  /**
-   * گرد کردن اعداد به دسته‌های مشخص برای نرمال‌سازی
-   * مثلاً رزولوشن صفحه را به نزدیک‌ترین مضرب ۱۰۰ گرد می‌کند
-   */
-  roundToBucket(value, step = 100) {
-    if (typeof value !== 'number' || !isFinite(value)) return 0;
-    return Math.round(value / step) * step;
-  },
-
-  /**
-   * نرمال‌سازی رشته‌ها با حذف فاصله‌های اضافی و تبدیل به حروف کوچک
-   * برای مقایسه‌ی فونت‌ها و مقادیر متنی
-   */
-  normalizeString(str) {
-    if (typeof str !== 'string') return '';
-    return str.trim().toLowerCase().replace(/\s+/g, ' ');
-  },
-
-  /**
-   * ایجاد یک هش ساده و سریع (CRC-32 مانند) برای قطعات کوچک
-   * این هش فقط برای بخش‌های داخلی استفاده می‌شود، نه هش نهایی
-   */
-  simpleHash(str) {
-    let hash = 0;
-    if (str.length === 0) return hash;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return Math.abs(hash).toString(36);
-  },
-
-  /**
-   * اجرای یک تابع با خطای خاموش (در صورت بروز خطا، مقدار پیش‌فرض برمی‌گردد)
-   * برای جلوگیری از خراب شدن کل اثر انگشت به خاطر یک سیگنال
-   */
-  safeExecute(fn, fallback = null) {
-    try {
-      const result = fn();
-      return (result !== undefined && result !== null) ? result : fallback;
-    } catch (_) {
-      return fallback;
-    }
-  },
-
-  /**
-   * بررسی اینکه آیا مرورگر در حالت مخفی (Incognito/Private) است
-   */
-  isIncognito() {
-    return new Promise((resolve) => {
-      try {
-        const test = 'whouser_test';
-        localStorage.setItem(test, test);
-        localStorage.removeItem(test);
-        resolve(false);
-      } catch (_) {
-        resolve(true);
-      }
-    });
-  },
-
-  /**
-   * دریافت لیست فونت‌های نصب‌شده روی سیستم
-   * با استفاده از تکنیک Flash of Unstyled Text (FOUT)
-   */
-  getInstalledFonts() {
-    return Helpers.safeExecute(() => {
-      const fontList = [
-        'Arial', 'Helvetica', 'Times New Roman', 'Times', 'Courier New',
-        'Courier', 'Verdana', 'Georgia', 'Palatino', 'Garamond',
-        'Bookman', 'Comic Sans MS', 'Trebuchet MS', 'Arial Black',
-        'Impact', 'Lucida Grande', 'Tahoma', 'Geneva', 'Verdana',
-        'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald',
-        'Raleway', 'Poppins', 'Nunito', 'Merriweather', 'Playfair Display'
-      ];
-      
-      const baseFonts = ['monospace', 'sans-serif', 'serif'];
-      const testString = 'mmmmmmmmmmlli';
-      const testSize = '72px';
-      
-      // ایجاد canvas برای تست
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return [];
-      
-      ctx.font = testSize + ' ' + baseFonts[0];
-      const baseWidth = ctx.measureText(testString).width;
-      
-      const installed = [];
-      for (const font of fontList) {
-        ctx.font = testSize + ' "' + font + '", ' + baseFonts[0];
-        const width = ctx.measureText(testString).width;
-        if (width !== baseWidth) {
-          installed.push(font);
-        }
-      }
-      
-      // فقط ۱۰ فونت اول را برمی‌گردانیم تا حجم هش زیاد نشود
-      return installed.slice(0, 10);
-    }, []);
+export function safeExecute(fn, fallback = null) {
+  try {
+    return fn();
+  } catch (e) {
+    return fallback;
   }
-};
+}
 
-export default Helpers;
+/**
+ * Safely execute an async function with timeout
+ * @param {Function} fn - Async function to execute
+ * @param {number} timeout - Timeout in milliseconds
+ * @param {any} fallback - Value to return on timeout or error
+ * @returns {Promise<any>} Result of fn or fallback
+ */
+export async function safeAsyncExecute(fn, timeout = 3000, fallback = null) {
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeout))
+    ]);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+/**
+ * Normalize signals to a consistent string representation
+ * @param {any} signals - Signals to normalize
+ * @returns {string} Normalized string
+ */
+export function normalizeSignals(signals) {
+  if (signals === null || signals === undefined) {
+    return 'null';
+  }
+
+  if (typeof signals === 'string') {
+    return signals;
+  }
+
+  if (typeof signals === 'number' || typeof signals === 'boolean') {
+    return String(signals);
+  }
+
+  if (Array.isArray(signals)) {
+    return signals.map(item => normalizeSignals(item)).join('|');
+  }
+
+  if (typeof signals === 'object') {
+    // Sort keys to ensure consistent order
+    const keys = Object.keys(signals).sort();
+    const parts = keys.map(key => {
+      const value = normalizeSignals(signals[key]);
+      return `${key}:${value}`;
+    });
+    return `{${parts.join(',')}}`;
+  }
+
+  return String(signals);
+}
+
+/**
+ * Check if a value is a plain object (not array, null, etc.)
+ * @param {any} value - Value to check
+ * @returns {boolean} True if plain object
+ */
+export function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Deep merge two objects (non-destructive)
+ * @param {Object} target - Target object
+ * @param {Object} source - Source object
+ * @returns {Object} Merged object
+ */
+export function deepMerge(target, source) {
+  const result = { ...target };
+
+  for (const key in source) {
+    if (source.hasOwnProperty(key)) {
+      if (isPlainObject(source[key]) && isPlainObject(target[key])) {
+        result[key] = deepMerge(target[key], source[key]);
+      } else {
+        result[key] = source[key];
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Generate a random salt string
+ * @param {number} length - Length of salt (default: 8)
+ * @returns {string} Random salt
+ */
+export function generateSalt(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let salt = '';
+  for (let i = 0; i < length; i++) {
+    salt += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return salt;
+}
+
+/**
+ * Truncate a string to maximum length
+ * @param {string} str - String to truncate
+ * @param {number} maxLength - Maximum length
+ * @param {string} suffix - Suffix to add (default: '...')
+ * @returns {string} Truncated string
+ */
+export function truncateString(str, maxLength = 100, suffix = '...') {
+  if (!str || str.length <= maxLength) return str;
+  return str.slice(0, maxLength - suffix.length) + suffix;
+}
+
+/**
+ * Get a nested property from an object using dot notation
+ * @param {Object} obj - Source object
+ * @param {string} path - Dot notation path (e.g., 'user.profile.name')
+ * @param {any} fallback - Fallback value if path not found
+ * @returns {any} Property value or fallback
+ */
+export function getNestedProperty(obj, path, fallback = null) {
+  try {
+    const parts = path.split('.');
+    let current = obj;
+    for (const part of parts) {
+      if (current === null || current === undefined) return fallback;
+      current = current[part];
+    }
+    return current !== undefined ? current : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+/**
+ * Check if running in a browser environment
+ * @returns {boolean} True if in browser
+ */
+export function isBrowser() {
+  return typeof window !== 'undefined' && typeof document !== 'undefined';
+}
+
+/**
+ * Check if running in Node.js environment
+ * @returns {boolean} True if in Node.js
+ */
+export function isNode() {
+  return typeof process !== 'undefined' && process.versions && process.versions.node;
+}
+
+/**
+ * Generate a random UUID (v4) - only for internal use
+ * @returns {string} UUID string
+ */
+export function generateUUID() {
+  if (isBrowser() && window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  
+  // Fallback implementation
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/**
+ * Debounce a function call
+ * @param {Function} fn - Function to debounce
+ * @param {number} delay - Delay in milliseconds
+ * @returns {Function} Debounced function
+ */
+export function debounce(fn, delay = 300) {
+  let timer = null;
+  return function(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+/**
+ * Throttle a function call
+ * @param {Function} fn - Function to throttle
+ * @param {number} limit - Limit in milliseconds
+ * @returns {Function} Throttled function
+ */
+export function throttle(fn, limit = 300) {
+  let inThrottle = false;
+  return function(...args) {
+    if (!inThrottle) {
+      fn.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  };
+}
