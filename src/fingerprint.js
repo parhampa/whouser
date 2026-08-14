@@ -1,5 +1,5 @@
-import { MurmurHash3 } from '../utils/hash.js';
-import { safeExecute, normalizeValue } from '../utils/helpers.js';
+import { MurmurHash3 } from './utils/hash.js'; // مسیر اصلاح شد
+import { safeExecute, normalizeValue } from './utils/helpers.js';
 import * as hardware from './signals/hardware.js';
 import * as software from './signals/software.js';
 import * as visual from './signals/visual.js';
@@ -79,17 +79,25 @@ function numericSimilarity(a, b, tolerance = 0.1) {
 }
 
 /**
- * Object similarity: weighted average of field similarities
+ * Object similarity with circular reference protection
  */
-function objectSimilarity(objA, objB, fieldWeights = null) {
+function objectSimilarity(objA, objB, fieldWeights = null, visited = new Set()) {
   if (!objA || !objB) return 0;
+  
+  // Prevent circular references
+  if (visited.has(objA) || visited.has(objB)) return 0;
+  visited.add(objA);
+  visited.add(objB);
+
   const keys = new Set([...Object.keys(objA), ...Object.keys(objB)]);
   let totalWeight = 0;
   let weightedSum = 0;
+
   for (const key of keys) {
     const valA = objA[key];
     const valB = objB[key];
     let sim = 0;
+
     if (typeof valA === 'string' && typeof valB === 'string') {
       sim = stringSimilarity(valA, valB);
     } else if (Array.isArray(valA) && Array.isArray(valB)) {
@@ -97,14 +105,41 @@ function objectSimilarity(objA, objB, fieldWeights = null) {
     } else if (typeof valA === 'number' && typeof valB === 'number') {
       sim = numericSimilarity(valA, valB);
     } else if (typeof valA === 'object' && typeof valB === 'object') {
-      sim = objectSimilarity(valA, valB);
+      sim = objectSimilarity(valA, valB, null, visited);
     } else {
       sim = valA === valB ? 1 : 0;
     }
-    const weight = (fieldWeights && fieldWeights[key]) || 1;
+
+    // Weighted fields - give higher weight to more important signals
+    let weight = 1;
+    if (fieldWeights && fieldWeights[key]) {
+      weight = fieldWeights[key];
+    } else {
+      // Default weights for known important fields
+      const defaultWeights = {
+        // Hardware
+        cpuCores: 2,
+        deviceMemory: 2,
+        screen: 1.5,
+        timezone: 1.5,
+        // Software
+        fonts: 1.5,
+        plugins: 1.2,
+        language: 1.5,
+        features: 1.2,
+        // Visual
+        canvas: 2,
+        webgl: 2,
+        audio: 1.5,
+        viewport: 1.5,
+      };
+      if (defaultWeights[key]) weight = defaultWeights[key];
+    }
+
     totalWeight += weight;
     weightedSum += sim * weight;
   }
+
   return totalWeight === 0 ? 0 : weightedSum / totalWeight;
 }
 
@@ -114,6 +149,7 @@ class Fingerprint {
    * @param {number} options.threshold - Matching threshold (0-1)
    * @param {Object} options.weights - Weights for hardware/software/visual
    * @param {string} options.accuracy - 'fast' | 'balanced' | 'high'
+   * @param {boolean} options.respectDoNotTrack - If true, block when DNT=1
    */
   constructor(options = {}) {
     this.threshold = options.threshold ?? DEFAULT_THRESHOLD;
@@ -122,6 +158,7 @@ class Fingerprint {
       ...(options.weights || {}),
     };
     this.accuracy = options.accuracy || 'balanced';
+    this.respectDoNotTrack = options.respectDoNotTrack ?? false;
     this._signalCollectors = {
       hardware: hardware.collect,
       software: software.collect,
@@ -133,6 +170,11 @@ class Fingerprint {
    * Generate a fingerprint (hash + raw signals)
    */
   async generate() {
+    // Check Do Not Track
+    if (this.respectDoNotTrack && typeof navigator !== 'undefined' && navigator.doNotTrack === '1') {
+      throw new Error('Fingerprinting blocked due to Do Not Track preference');
+    }
+
     const signals = {
       hardware: await safeExecute(() => this._signalCollectors.hardware(this.accuracy), {}),
       software: await safeExecute(() => this._signalCollectors.software(this.accuracy), {}),
@@ -157,23 +199,18 @@ class Fingerprint {
       hash2,
       hash3,
       fullHash,
-      raw: signals, // <-- ذخیره‌ی سیگنال‌های خام برای fuzzy matching
+      raw: signals,
       timestamp: Date.now(),
     };
   }
 
   /**
    * Compare two fingerprints with fuzzy logic
-   * @param {Object} fp1 - First fingerprint (with raw signals)
-   * @param {Object} fp2 - Second fingerprint (with raw signals)
-   * @param {Object} options - Override threshold/weights
-   * @returns {Object} { score, match, details }
    */
   compare(fp1, fp2, options = {}) {
     const threshold = options.threshold ?? this.threshold;
     const weights = { ...this.weights, ...(options.weights || {}) };
 
-    // If raw signals missing, fallback to exact hash matching
     if (!fp1.raw || !fp2.raw) {
       const match = fp1.fullHash === fp2.fullHash;
       return {
@@ -183,12 +220,30 @@ class Fingerprint {
       };
     }
 
-    // Calculate similarity for each section
-    const hwSim = objectSimilarity(fp1.raw.hardware, fp2.raw.hardware);
-    const swSim = objectSimilarity(fp1.raw.software, fp2.raw.software);
-    const visSim = objectSimilarity(fp1.raw.visual, fp2.raw.visual);
+    // Define field weights for important signals
+    const fieldWeights = {
+      // Hardware: CPU and memory are very stable
+      cpuCores: 2,
+      deviceMemory: 2,
+      screen: 1.5,
+      timezone: 1.5,
+      platform: 1.2,
+      // Software: fonts and language are fairly stable
+      fonts: 1.5,
+      plugins: 1.2,
+      language: 1.5,
+      features: 1.2,
+      // Visual: canvas and webgl are highly stable
+      canvas: 2,
+      webgl: 2,
+      audio: 1.5,
+      viewport: 1.2,
+    };
 
-    // Weighted average
+    const hwSim = objectSimilarity(fp1.raw.hardware, fp2.raw.hardware, fieldWeights);
+    const swSim = objectSimilarity(fp1.raw.software, fp2.raw.software, fieldWeights);
+    const visSim = objectSimilarity(fp1.raw.visual, fp2.raw.visual, fieldWeights);
+
     const weightedScore =
       hwSim * weights.hardware +
       swSim * weights.software +
@@ -211,9 +266,6 @@ class Fingerprint {
     };
   }
 
-  /**
-   * Set accuracy level (affects which signals are collected)
-   */
   setAccuracy(level) {
     if (['fast', 'balanced', 'high'].includes(level)) {
       this.accuracy = level;
