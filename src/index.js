@@ -1,105 +1,71 @@
-// src/index.js
-import { getHardwareSignals } from './signals/hardware.js';
-import { getSoftwareSignals } from './signals/software.js';
-import { getVisualSignals } from './signals/visual.js';
-import { hashSignals } from './utils/hash.js';
-import { fuzzyMatch } from './utils/matching.js';
+import Fingerprint from './fingerprint.js';
 
+/**
+ * Main Whouser class - Browser fingerprinting with fuzzy matching
+ * 
+ * @example
+ * const whouser = new Whouser({ accuracy: 'balanced', threshold: 0.7 });
+ * const fp = await whouser.getFingerprint();
+ * const isSame = whouser.compare(fp1, fp2).match;
+ */
 class Whouser {
+  /**
+   * @param {Object} options
+   * @param {string} options.accuracy - 'fast' | 'balanced' | 'high' (default: 'balanced')
+   * @param {number} options.threshold - Matching threshold 0-1 (default: 0.7)
+   * @param {Object} options.weights - Custom weights for hardware/software/visual
+   */
   constructor(options = {}) {
-    this.options = {
-      timeout: options.timeout || 3000,
-      includeTiming: options.includeTiming !== undefined ? options.includeTiming : true,
-      ...options
-    };
-    this._cachedFingerprint = null;
-    this._cachedRaw = null;
+    // Forward all options to Fingerprint instance
+    this._fp = new Fingerprint({
+      accuracy: options.accuracy || 'balanced',
+      threshold: options.threshold ?? 0.7,
+      weights: options.weights || { hardware: 0.4, software: 0.3, visual: 0.3 },
+    });
   }
 
   /**
-   * Main method to get the full fingerprint (3-part hash)
-   * @returns {Promise<Object>} { hash1, hash2, hash3, raw, timestamp }
+   * Generate a complete fingerprint (hash + raw signals)
+   * @returns {Promise<Object>} Fingerprint object
    */
   async getFingerprint() {
-    try {
-      // Collect all signals in parallel
-      const [hw, sw, vis] = await Promise.all([
-        getHardwareSignals(this.options),
-        getSoftwareSignals(this.options),
-        getVisualSignals(this.options)
-      ]);
-
-      const raw = { hardware: hw, software: sw, visual: vis };
-      
-      // Generate 3-part hash
-      const hash1 = hashSignals(hw);
-      const hash2 = hashSignals(sw);
-      const hash3 = hashSignals(vis);
-
-      const result = {
-        hash1,
-        hash2,
-        hash3,
-        raw,
-        timestamp: Date.now()
-      };
-
-      // Cache for later use
-      this._cachedFingerprint = result;
-      this._cachedRaw = raw;
-      
-      return result;
-    } catch (error) {
-      console.error('Whouser: Error generating fingerprint', error);
-      throw new Error('Fingerprint generation failed');
-    }
+    return this._fp.generate();
   }
 
   /**
-   * Get raw signals without hashing (useful for debugging or custom processing)
-   * @returns {Promise<Object>} raw signals object
-   */
-  async getRawSignals() {
-    if (this._cachedRaw) {
-      return this._cachedRaw;
-    }
-    try {
-      const [hw, sw, vis] = await Promise.all([
-        getHardwareSignals(this.options),
-        getSoftwareSignals(this.options),
-        getVisualSignals(this.options)
-      ]);
-      const raw = { hardware: hw, software: sw, visual: vis };
-      this._cachedRaw = raw;
-      return raw;
-    } catch (error) {
-      console.error('Whouser: Error collecting raw signals', error);
-      throw new Error('Raw signal collection failed');
-    }
-  }
-
-  /**
-   * Compare two fingerprints using fuzzy matching
-   * @param {Object} fp1 - First fingerprint object (with hash1, hash2, hash3)
-   * @param {Object} fp2 - Second fingerprint object
-   * @param {Object} options - weights for each part
+   * Compare two fingerprints with fuzzy logic
+   * @param {Object} fp1 - First fingerprint
+   * @param {Object} fp2 - Second fingerprint
+   * @param {Object} options - Optional overrides for threshold/weights
    * @returns {Object} { score, match, details }
    */
-  compare(fp1, fp2, options = { weights: [0.4, 0.3, 0.3] }) {
-    if (!fp1 || !fp2) {
-      throw new Error('Both fingerprints are required for comparison');
-    }
-    return fuzzyMatch(fp1, fp2, options);
+  compare(fp1, fp2, options = {}) {
+    return this._fp.compare(fp1, fp2, options);
   }
 
   /**
-   * Clear cached fingerprint to force re-collection
+   * Change accuracy level after instantiation
+   * @param {string} level - 'fast' | 'balanced' | 'high'
+   * @returns {this} For chaining
    */
-  clearCache() {
-    this._cachedFingerprint = null;
-    this._cachedRaw = null;
+  setAccuracy(level) {
+    this._fp.setAccuracy(level);
+    return this;
+  }
+
+  /**
+   * Get current configuration
+   * @returns {Object} { accuracy, threshold, weights }
+   */
+  getConfig() {
+    return {
+      accuracy: this._fp.accuracy,
+      threshold: this._fp.threshold,
+      weights: this._fp.weights,
+    };
   }
 }
 
+// Export both default and named for flexibility
 export default Whouser;
-export { Whouser };
+export { Fingerprint, Whouser };
