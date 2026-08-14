@@ -25,17 +25,15 @@ export default [
       commonjs(),
       terser({
         compress: {
-          drop_console: true, // حذف console.log در محیط production
+          drop_console: true,
         },
       }),
     ],
-    external: [], // هیچ وابستگی خارجی نداریم
+    external: [],
   },
-  // Build TypeScript declarations (if you have .d.ts in src or generate via JSDoc)
+  // Build TypeScript declarations
   {
-    input: 'src/index.d.ts', // اگر فایل تعاریف وجود داشته باشد، اما فعلاً نداریم، پس از index.js استفاده می‌کنیم؟
-    // بهتر است از یک فایل d.ts جداگانه استفاده کنیم، اما فعلاً فرض می‌کنیم که وجود دارد.
-    // در پروژه اصلی فایل تعاریف در src/index.d.ts هست؟ بله، وجود دارد.
+    input: 'src/index.d.ts',
     output: [{ file: 'dist/index.d.ts', format: 'es' }],
     plugins: [dts()],
   },
