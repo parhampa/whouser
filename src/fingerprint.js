@@ -1,345 +1,224 @@
-// src/fingerprint.js
+import { MurmurHash3 } from '../utils/hash.js';
+import { safeExecute, normalizeValue } from '../utils/helpers.js';
+import * as hardware from './signals/hardware.js';
+import * as software from './signals/software.js';
+import * as visual from './signals/visual.js';
 
-import BaseSignals from './signals/base-signals.js';
-import GraphicSignals from './signals/graphic-signals.js';
-import EnvironmentSignals from './signals/environment-signals.js';
-import TimingSignals from './signals/timing-signals.js';
-import Helpers from './utils/helpers.js';
+const DEFAULT_WEIGHTS = {
+  hardware: 0.4,
+  software: 0.3,
+  visual: 0.3,
+};
+
+const DEFAULT_THRESHOLD = 0.7;
 
 /**
- * کلاس اصلی کتابخانه‌ی whouser
- * تمام سیگنال‌ها را جمع‌آوری کرده، وزن‌دهی کرده و هش نهایی را تولید می‌کند
- * 
- * @example
- * const fp = new Fingerprint({ accuracy: 'high' });
- * const result = await fp.getFingerprint();
- * console.log(result.hash); // "a3f5b2-9d4c7e-1f8a3d"
+ * Calculate Levenshtein distance between two strings
  */
-class Fingerprint {
-  constructor(options = {}) {
-    this.options = {
-      // فعال/غیرفعال کردن دسته‌های سیگنال
-      enableBase: options.enableBase !== undefined ? options.enableBase : true,
-      enableGraphic: options.enableGraphic !== undefined ? options.enableGraphic : true,
-      enableEnvironment: options.enableEnvironment !== undefined ? options.enableEnvironment : true,
-      enableTiming: options.enableTiming !== undefined ? options.enableTiming : true,
-      
-      // سطح دقت (بیشتر = سیگنال‌های بیشتر و زمان بیشتر)
-      accuracy: options.accuracy || 'balanced', // 'fast', 'balanced', 'high'
-      
-      // وزن‌دهی سفارشی (اختیاری)
-      customWeights: options.customWeights || null,
-      
-      // فعال کردن تشخیص فازی (Fuzzy Matching)
-      enableFuzzy: options.enableFuzzy !== undefined ? options.enableFuzzy : true,
-      
-      // آستانه‌ی تشابه برای تشخیص فازی (۰ تا ۱)
-      fuzzyThreshold: options.fuzzyThreshold || 0.7
-    };
-    
-    // وزن‌های پیش‌فرض برای هر بخش
-    this.weights = {
-      hardware: 0.5,  // سخت‌افزار (پایدارترین)
-      software: 0.3,  // نرم‌افزار (نسبتاً پایدار)
-      visual: 0.2     // ظاهری (کمترین پایداری)
-    };
-    
-    // اگر وزن‌های سفارشی داده شده باشد
-    if (this.options.customWeights) {
-      Object.assign(this.weights, this.options.customWeights);
-    }
-    
-    // تنظیم سطح دقت
-    this.setAccuracy(this.options.accuracy);
+function levenshteinDistance(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
   }
-
-  /**
-   * تنظیم سطح دقت
-   */
-  setAccuracy(level) {
-    switch(level) {
-      case 'fast':
-        // فقط سیگنال‌های پایه و سریع
-        this.options.enableTiming = false;
-        this.options.enableGraphic = false;
-        this.options.enableEnvironment = false;
-        break;
-      case 'high':
-        // همه‌ی سیگنال‌ها با دقت بالا (زمان بیشتر)
-        this.options.enableTiming = true;
-        this.options.enableGraphic = true;
-        this.options.enableEnvironment = true;
-        break;
-      case 'balanced':
-      default:
-        // تعادل بین سرعت و دقت
-        this.options.enableTiming = true;
-        this.options.enableGraphic = true;
-        this.options.enableEnvironment = true;
-        break;
-    }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
   }
-
-  /**
-   * جمع‌آوری همه‌ی سیگنال‌ها
-   */
-  async collectAllSignals() {
-    const signals = {};
-    
-    // سیگنال‌های پایه (همیشه فعال)
-    if (this.options.enableBase) {
-      const base = await BaseSignals.collectAll();
-      Object.assign(signals, base);
-    }
-    
-    // سیگنال‌های گرافیکی
-    if (this.options.enableGraphic) {
-      const graphic = await GraphicSignals.collectAll();
-      Object.assign(signals, graphic);
-    }
-    
-    // سیگنال‌های محیطی
-    if (this.options.enableEnvironment) {
-      const env = await EnvironmentSignals.collectAll();
-      Object.assign(signals, env);
-    }
-    
-    // سیگنال‌های تایمینگ
-    if (this.options.enableTiming) {
-      const timing = await TimingSignals.collectAll();
-      Object.assign(signals, timing);
-    }
-    
-    return signals;
-  }
-
-  /**
-   * تولید هش نهایی با روش سه بخشی
-   * بخش ۱: سخت‌افزاری (وزن بالا) - WebGL، CPU، حافظه
-   * بخش ۲: نرم‌افزاری (وزن متوسط) - OS، مرورگر، زبان
-   * بخش ۳: ظاهری (وزن کم) - رزولوشن، فونت‌ها، تایمینگ‌ها
-   */
-  generateHash(signals) {
-    // بخش سخت‌افزاری (پایدارترین)
-    const hardwarePart = this.buildHardwarePart(signals);
-    
-    // بخش نرم‌افزاری (نسبتاً پایدار)
-    const softwarePart = this.buildSoftwarePart(signals);
-    
-    // بخش ظاهری (کمترین پایداری)
-    const visualPart = this.buildVisualPart(signals);
-    
-    // هش کردن هر بخش با یک الگوریتم ساده
-    const hash1 = Helpers.simpleHash(hardwarePart);
-    const hash2 = Helpers.simpleHash(softwarePart);
-    const hash3 = Helpers.simpleHash(visualPart);
-    
-    // ترکیب نهایی با وزن‌ها (برای نمایش)
-    const finalHash = `${hash1}-${hash2}-${hash3}`;
-    
-    return {
-      hash: finalHash,
-      parts: {
-        hardware: hash1,
-        software: hash2,
-        visual: hash3
-      },
-      // ذخیره‌ی سیگنال‌های خام برای تطابق فازی
-      rawSignals: signals
-    };
-  }
-
-  /**
-   * ساخت بخش سخت‌افزاری
-   */
-  buildHardwarePart(signals) {
-    const parts = [];
-    
-    // WebGL Vendor & Renderer
-    if (signals.webglInfo) {
-      parts.push(signals.webglInfo);
-    }
-    
-    // CPU benchmark
-    if (signals.cpu) {
-      parts.push(signals.cpu);
-    }
-    
-    // Memory benchmark
-    if (signals.memory) {
-      parts.push(signals.memory);
-    }
-    
-    // تعداد هسته‌ها و حافظه (از base-signals)
-    if (signals.hardware) {
-      parts.push(signals.hardware);
-    }
-    
-    // اطلاعات GPU از گرافیک
-    if (signals.gpuInfo) {
-      parts.push(signals.gpuInfo);
-    }
-    
-    return parts.join('|');
-  }
-
-  /**
-   * ساخت بخش نرم‌افزاری
-   */
-  buildSoftwarePart(signals) {
-    const parts = [];
-    
-    // OS و پلتفرم
-    if (signals.os) {
-      parts.push(signals.os);
-    }
-    
-    // مرورگر و نسخه
-    if (signals.browser) {
-      parts.push(signals.browser);
-    }
-    
-    // زبان و منطقه زمانی
-    if (signals.locale) {
-      parts.push(signals.locale);
-    }
-    
-    // ویژگی‌های پشتیبانی شده
-    if (signals.features) {
-      parts.push(signals.features);
-    }
-    
-    // وضعیت AdBlocker
-    if (signals.adblock) {
-      parts.push(signals.adblock);
-    }
-    
-    // اطلاعات دستگاه‌های ورودی
-    if (signals.input) {
-      parts.push(signals.input);
-    }
-    
-    return parts.join('|');
-  }
-
-  /**
-   * ساخت بخش ظاهری
-   */
-  buildVisualPart(signals) {
-    const parts = [];
-    
-    // رزولوشن و صفحه‌نمایش
-    if (signals.screen) {
-      parts.push(signals.screen);
-    }
-    
-    // لیست فونت‌ها (از گرافیک)
-    if (signals.fonts) {
-      parts.push(signals.fonts);
-    }
-    
-    // Canvas و Audio fingerprint (از گرافیک)
-    if (signals.canvas) {
-      parts.push(signals.canvas);
-    }
-    if (signals.audio) {
-      parts.push(signals.audio);
-    }
-    
-    // تایمینگ‌های صفحه
-    if (signals.pageTiming) {
-      parts.push(signals.pageTiming);
-    }
-    
-    // عملکرد Canvas و WebGL
-    if (signals.canvasPerf) {
-      parts.push(signals.canvasPerf);
-    }
-    if (signals.webglPerf) {
-      parts.push(signals.webglPerf);
-    }
-    
-    // اطلاعات شبکه (نوع اتصال)
-    if (signals.network) {
-      parts.push(signals.network);
-    }
-    
-    return parts.join('|');
-  }
-
-  /**
-   * تشخیص تطابق فازی بین دو اثر انگشت
-   * بر اساس تشابه بخش‌های سه‌گانه
-   */
-  fuzzyMatch(hash1, hash2) {
-    if (!hash1 || !hash2) return false;
-    
-    // اگر هش‌ها دقیقاً برابر باشند
-    if (hash1.hash === hash2.hash) return true;
-    
-    // بخش‌ها را جدا می‌کنیم
-    const parts1 = hash1.hash.split('-');
-    const parts2 = hash2.hash.split('-');
-    
-    if (parts1.length !== 3 || parts2.length !== 3) return false;
-    
-    // شمارش تعداد بخش‌های مشابه
-    let matchCount = 0;
-    for (let i = 0; i < 3; i++) {
-      if (parts1[i] === parts2[i]) {
-        matchCount++;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b[i - 1] === a[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
       }
     }
-    
-    // محاسبه‌ی نسبت تشابه
-    const similarity = matchCount / 3;
-    
-    // اگر تشابه بیشتر از آستانه باشد
-    return similarity >= this.options.fuzzyThreshold;
+  }
+  return matrix[b.length][a.length];
+}
+
+/**
+ * String similarity (0 to 1) using Levenshtein
+ */
+function stringSimilarity(a, b) {
+  if (!a && !b) return 1;
+  if (!a || !b) return 0;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  const dist = levenshteinDistance(a.toLowerCase(), b.toLowerCase());
+  return 1 - dist / maxLen;
+}
+
+/**
+ * Jaccard similarity for arrays/sets
+ */
+function jaccardSimilarity(a, b) {
+  if (!a && !b) return 1;
+  if (!a || !b) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  const intersection = new Set([...setA].filter(x => setB.has(x)));
+  const union = new Set([...setA, ...setB]);
+  return intersection.size / union.size;
+}
+
+/**
+ * Numeric similarity with tolerance (relative difference)
+ */
+function numericSimilarity(a, b, tolerance = 0.1) {
+  if (a === undefined || b === undefined) return 0;
+  if (a === b) return 1;
+  const diff = Math.abs(a - b);
+  const maxVal = Math.max(Math.abs(a), Math.abs(b), 1);
+  const relDiff = diff / maxVal;
+  return Math.max(0, 1 - relDiff / tolerance);
+}
+
+/**
+ * Object similarity: weighted average of field similarities
+ */
+function objectSimilarity(objA, objB, fieldWeights = null) {
+  if (!objA || !objB) return 0;
+  const keys = new Set([...Object.keys(objA), ...Object.keys(objB)]);
+  let totalWeight = 0;
+  let weightedSum = 0;
+  for (const key of keys) {
+    const valA = objA[key];
+    const valB = objB[key];
+    let sim = 0;
+    if (typeof valA === 'string' && typeof valB === 'string') {
+      sim = stringSimilarity(valA, valB);
+    } else if (Array.isArray(valA) && Array.isArray(valB)) {
+      sim = jaccardSimilarity(valA, valB);
+    } else if (typeof valA === 'number' && typeof valB === 'number') {
+      sim = numericSimilarity(valA, valB);
+    } else if (typeof valA === 'object' && typeof valB === 'object') {
+      sim = objectSimilarity(valA, valB);
+    } else {
+      sim = valA === valB ? 1 : 0;
+    }
+    const weight = (fieldWeights && fieldWeights[key]) || 1;
+    totalWeight += weight;
+    weightedSum += sim * weight;
+  }
+  return totalWeight === 0 ? 0 : weightedSum / totalWeight;
+}
+
+class Fingerprint {
+  /**
+   * @param {Object} options
+   * @param {number} options.threshold - Matching threshold (0-1)
+   * @param {Object} options.weights - Weights for hardware/software/visual
+   * @param {string} options.accuracy - 'fast' | 'balanced' | 'high'
+   */
+  constructor(options = {}) {
+    this.threshold = options.threshold ?? DEFAULT_THRESHOLD;
+    this.weights = {
+      ...DEFAULT_WEIGHTS,
+      ...(options.weights || {}),
+    };
+    this.accuracy = options.accuracy || 'balanced';
+    this._signalCollectors = {
+      hardware: hardware.collect,
+      software: software.collect,
+      visual: visual.collect,
+    };
   }
 
   /**
-   * متد اصلی برای گرفتن اثر انگشت
-   * این متد را کاربر صدا می‌زند
+   * Generate a fingerprint (hash + raw signals)
    */
-  async getFingerprint() {
-    try {
-      // جمع‌آوری سیگنال‌ها
-      const signals = await this.collectAllSignals();
-      
-      // تولید هش
-      const result = this.generateHash(signals);
-      
-      // اضافه کردن اطلاعات متادیتا برای دیباگ
-      result.metadata = {
-        timestamp: Date.now(),
-        accuracy: this.options.accuracy,
-        signalsCount: Object.keys(signals).length
-      };
-      
-      return result;
-    } catch (error) {
-      console.error('Fingerprint error:', error);
-      // در صورت خطا، یک هش پیش‌فرض برمی‌گردانیم
+  async generate() {
+    const signals = {
+      hardware: await safeExecute(() => this._signalCollectors.hardware(this.accuracy), {}),
+      software: await safeExecute(() => this._signalCollectors.software(this.accuracy), {}),
+      visual: await safeExecute(() => this._signalCollectors.visual(this.accuracy), {}),
+    };
+
+    // Generate separate hashes for each section
+    const hash1 = MurmurHash3(JSON.stringify(signals.hardware));
+    const hash2 = MurmurHash3(JSON.stringify(signals.software));
+    const hash3 = MurmurHash3(JSON.stringify(signals.visual));
+
+    // Combined hash with weights
+    const combined = JSON.stringify({
+      h: signals.hardware,
+      s: signals.software,
+      v: signals.visual,
+    });
+    const fullHash = MurmurHash3(combined);
+
+    return {
+      hash1,
+      hash2,
+      hash3,
+      fullHash,
+      raw: signals, // <-- ذخیره‌ی سیگنال‌های خام برای fuzzy matching
+      timestamp: Date.now(),
+    };
+  }
+
+  /**
+   * Compare two fingerprints with fuzzy logic
+   * @param {Object} fp1 - First fingerprint (with raw signals)
+   * @param {Object} fp2 - Second fingerprint (with raw signals)
+   * @param {Object} options - Override threshold/weights
+   * @returns {Object} { score, match, details }
+   */
+  compare(fp1, fp2, options = {}) {
+    const threshold = options.threshold ?? this.threshold;
+    const weights = { ...this.weights, ...(options.weights || {}) };
+
+    // If raw signals missing, fallback to exact hash matching
+    if (!fp1.raw || !fp2.raw) {
+      const match = fp1.fullHash === fp2.fullHash;
       return {
-        hash: 'error-' + Date.now(),
-        parts: { hardware: 'error', software: 'error', visual: 'error' },
-        rawSignals: {},
-        metadata: {
-          timestamp: Date.now(),
-          accuracy: this.options.accuracy,
-          error: error.message
-        }
+        score: match ? 1 : 0,
+        match,
+        details: { method: 'fallback-exact-hash' },
       };
     }
+
+    // Calculate similarity for each section
+    const hwSim = objectSimilarity(fp1.raw.hardware, fp2.raw.hardware);
+    const swSim = objectSimilarity(fp1.raw.software, fp2.raw.software);
+    const visSim = objectSimilarity(fp1.raw.visual, fp2.raw.visual);
+
+    // Weighted average
+    const weightedScore =
+      hwSim * weights.hardware +
+      swSim * weights.software +
+      visSim * weights.visual;
+
+    const totalWeight = weights.hardware + weights.software + weights.visual;
+    const finalScore = totalWeight > 0 ? weightedScore / totalWeight : 0;
+
+    return {
+      score: finalScore,
+      match: finalScore >= threshold,
+      details: {
+        hardwareSimilarity: hwSim,
+        softwareSimilarity: swSim,
+        visualSimilarity: visSim,
+        threshold,
+        weights,
+        method: 'fuzzy-weighted',
+      },
+    };
   }
 
   /**
-   * متد کمکی برای مقایسه‌ی دو اثر انگشت
+   * Set accuracy level (affects which signals are collected)
    */
-  compare(fingerprint1, fingerprint2) {
-    if (!fingerprint1 || !fingerprint2) return false;
-    return this.fuzzyMatch(fingerprint1, fingerprint2);
+  setAccuracy(level) {
+    if (['fast', 'balanced', 'high'].includes(level)) {
+      this.accuracy = level;
+    }
+    return this;
   }
 }
 
