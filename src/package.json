@@ -1,59 +1,46 @@
 {
   "name": "whouser",
   "version": "1.0.0",
-  "description": "Advanced browser fingerprinting with 3-part weighted hashing and fuzzy matching - no cookies, localStorage, or IP",
-  "main": "dist/whouser.cjs.js",
-  "module": "dist/whouser.esm.js",
-  "browser": "dist/whouser.min.js",
-  "type": "module",
-  "scripts": {
-    "test": "vitest",
-    "build": "rollup -c",
-    "dev": "rollup -c -w",
-    "lint": "eslint src --ext .js",
-    "prepublishOnly": "npm run build"
-  },
+  "description": "Browser fingerprinting library with fuzzy matching, no cookies, no localStorage, no IP",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
+  "scripts": {
+    "build": "rollup -c",
+    "prepublishOnly": "npm run build",
+    "test": "vitest",
+    "test:watch": "vitest watch",
+    "lint": "eslint src --ext .js",
+    "format": "prettier --write src"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/parhampa/whouser.git"
+  },
   "keywords": [
     "fingerprint",
     "browser-fingerprint",
-    "device-fingerprint",
-    "fingerprinting",
-    "privacy",
-    "identification",
     "fuzzy-matching",
-    "whouser",
-    "client-side",
-    "no-cookies"
+    "privacy",
+    "device-id"
   ],
-  "author": "Parham PA",
+  "author": "parhampa",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/parhampa/whouser"
-  },
   "bugs": {
     "url": "https://github.com/parhampa/whouser/issues"
   },
   "homepage": "https://github.com/parhampa/whouser#readme",
-  "engines": {
-    "node": ">=14.0.0"
-  },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^25.0.0",
-    "@rollup/plugin-node-resolve": "^15.0.0",
-    "@rollup/plugin-terser": "^0.4.0",
-    "eslint": "^8.56.0",
-    "rollup": "^4.0.0",
-    "vitest": "^1.0.0"
-  },
-  "browserslist": [
-    "last 2 chrome versions",
-    "last 2 firefox versions",
-    "last 2 safari versions",
-    "last 2 edge versions"
-  ]
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "rollup": "^4.9.6",
+    "rollup-plugin-dts": "^6.1.0",
+    "vitest": "^1.2.0"
+  }
 }
