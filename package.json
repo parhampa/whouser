@@ -1,0 +1,49 @@
+{
+  "name": "whouser",
+  "version": "2.0.0",
+  "description": "Browser fingerprinting library with fuzzy matching, no cookies, no localStorage, no IP",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "prepublishOnly": "npm run build",
+    "test": "vitest",
+    "test:watch": "vitest watch",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src --ext .js",
+    "format": "prettier --write src"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/parhampa/whouser.git"
+  },
+  "keywords": [
+    "fingerprint",
+    "browser-fingerprint",
+    "fuzzy-matching",
+    "privacy",
+    "device-id"
+  ],
+  "author": "parhampa",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/parhampa/whouser/issues"
+  },
+  "homepage": "https://github.com/parhampa/whouser#readme",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "@vitest/coverage-v8": "^1.2.0",
+    "eslint": "^8.57.0",
+    "jsdom": "^23.2.0",
+    "prettier": "^3.2.5",
+    "rollup": "^4.9.6",
+    "rollup-plugin-dts": "^6.1.0",
+    "vitest": "^1.2.0"
+  }
+}
