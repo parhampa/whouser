@@ -1,79 +1,33 @@
-// src/utils/helpers.js
-
 /**
- * Safely execute a function and return fallback if it fails
+ * Execute a function safely with try-catch and return fallback on error
  * @param {Function} fn - Function to execute
- * @param {any} fallback - Value to return if function throws
- * @returns {any} Result of fn or fallback
+ * @param {*} fallback - Value to return if function throws
+ * @param {...any} args - Arguments to pass to the function
+ * @returns {*} Result of function or fallback
  */
-export function safeExecute(fn, fallback = null) {
+export function safeExecute(fn, fallback = null, ...args) {
   try {
-    return fn();
+    const result = fn(...args);
+    // If result is a Promise, handle it properly
+    if (result && typeof result.then === 'function') {
+      return result.catch(() => fallback);
+    }
+    return result !== undefined && result !== null ? result : fallback;
   } catch (e) {
     return fallback;
   }
 }
 
 /**
- * Safely execute an async function with timeout
- * @param {Function} fn - Async function to execute
- * @param {number} timeout - Timeout in milliseconds
- * @param {any} fallback - Value to return on timeout or error
- * @returns {Promise<any>} Result of fn or fallback
+ * Normalize a value for comparison (trim, lowercase, remove extra spaces)
+ * @param {string} value - Value to normalize
+ * @returns {string} Normalized value
  */
-export async function safeAsyncExecute(fn, timeout = 3000, fallback = null) {
-  try {
-    return await Promise.race([
-      fn(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeout))
-    ]);
-  } catch (e) {
-    return fallback;
+export function normalizeValue(value) {
+  if (typeof value !== 'string') {
+    return value;
   }
-}
-
-/**
- * Normalize signals to a consistent string representation
- * @param {any} signals - Signals to normalize
- * @returns {string} Normalized string
- */
-export function normalizeSignals(signals) {
-  if (signals === null || signals === undefined) {
-    return 'null';
-  }
-
-  if (typeof signals === 'string') {
-    return signals;
-  }
-
-  if (typeof signals === 'number' || typeof signals === 'boolean') {
-    return String(signals);
-  }
-
-  if (Array.isArray(signals)) {
-    return signals.map(item => normalizeSignals(item)).join('|');
-  }
-
-  if (typeof signals === 'object') {
-    // Sort keys to ensure consistent order
-    const keys = Object.keys(signals).sort();
-    const parts = keys.map(key => {
-      const value = normalizeSignals(signals[key]);
-      return `${key}:${value}`;
-    });
-    return `{${parts.join(',')}}`;
-  }
-
-  return String(signals);
-}
-
-/**
- * Check if a value is a plain object (not array, null, etc.)
- * @param {any} value - Value to check
- * @returns {boolean} True if plain object
- */
-export function isPlainObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 /**
@@ -83,128 +37,158 @@ export function isPlainObject(value) {
  * @returns {Object} Merged object
  */
 export function deepMerge(target, source) {
-  const result = { ...target };
+  if (!target || typeof target !== 'object') return source;
+  if (!source || typeof source !== 'object') return target;
 
-  for (const key in source) {
-    if (source.hasOwnProperty(key)) {
-      if (isPlainObject(source[key]) && isPlainObject(target[key])) {
-        result[key] = deepMerge(target[key], source[key]);
-      } else {
-        result[key] = source[key];
-      }
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      result[key] = deepMerge(target[key], source[key]);
+    } else {
+      result[key] = source[key];
     }
   }
-
   return result;
 }
 
 /**
- * Generate a random salt string
- * @param {number} length - Length of salt (default: 8)
- * @returns {string} Random salt
+ * Memoize a function with a simple cache (using Map)
+ * @param {Function} fn - Function to memoize
+ * @param {Function} keyGenerator - Optional function to generate cache key (default: JSON.stringify(args))
+ * @returns {Function} Memoized function
  */
-export function generateSalt(length = 8) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let salt = '';
-  for (let i = 0; i < length; i++) {
-    salt += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return salt;
-}
-
-/**
- * Truncate a string to maximum length
- * @param {string} str - String to truncate
- * @param {number} maxLength - Maximum length
- * @param {string} suffix - Suffix to add (default: '...')
- * @returns {string} Truncated string
- */
-export function truncateString(str, maxLength = 100, suffix = '...') {
-  if (!str || str.length <= maxLength) return str;
-  return str.slice(0, maxLength - suffix.length) + suffix;
-}
-
-/**
- * Get a nested property from an object using dot notation
- * @param {Object} obj - Source object
- * @param {string} path - Dot notation path (e.g., 'user.profile.name')
- * @param {any} fallback - Fallback value if path not found
- * @returns {any} Property value or fallback
- */
-export function getNestedProperty(obj, path, fallback = null) {
-  try {
-    const parts = path.split('.');
-    let current = obj;
-    for (const part of parts) {
-      if (current === null || current === undefined) return fallback;
-      current = current[part];
+export function memoize(fn, keyGenerator = null) {
+  const cache = new Map();
+  return function (...args) {
+    const key = keyGenerator ? keyGenerator(args) : JSON.stringify(args);
+    if (cache.has(key)) {
+      return cache.get(key);
     }
-    return current !== undefined ? current : fallback;
-  } catch (e) {
-    return fallback;
-  }
+    const result = fn(...args);
+    cache.set(key, result);
+    return result;
+  };
 }
 
 /**
- * Check if running in a browser environment
- * @returns {boolean} True if in browser
+ * Check if code is running in a browser environment
+ * @returns {boolean}
  */
 export function isBrowser() {
   return typeof window !== 'undefined' && typeof document !== 'undefined';
 }
 
 /**
- * Check if running in Node.js environment
- * @returns {boolean} True if in Node.js
+ * Check if code is running in Node.js environment
+ * @returns {boolean}
  */
 export function isNode() {
   return typeof process !== 'undefined' && process.versions && process.versions.node;
 }
 
 /**
- * Generate a random UUID (v4) - only for internal use
- * @returns {string} UUID string
+ * Throttle a function (limit execution rate)
+ * @param {Function} fn - Function to throttle
+ * @param {number} limit - Minimum time between executions (ms)
+ * @returns {Function} Throttled function
  */
-export function generateUUID() {
-  if (isBrowser() && window.crypto && window.crypto.randomUUID) {
-    return window.crypto.randomUUID();
+export function throttle(fn, limit = 250) {
+  let inThrottle = false;
+  let lastResult = null;
+  return function (...args) {
+    if (!inThrottle) {
+      lastResult = fn(...args);
+      inThrottle = true;
+      setTimeout(() => (inThrottle = false), limit);
+    }
+    return lastResult;
+  };
+}
+
+/**
+ * Debounce a function (delay execution until after pause)
+ * @param {Function} fn - Function to debounce
+ * @param {number} delay - Delay in ms
+ * @returns {Function} Debounced function
+ */
+export function debounce(fn, delay = 250) {
+  let timeoutId = null;
+  return function (...args) {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    return new Promise((resolve) => {
+      timeoutId = setTimeout(() => {
+        const result = fn(...args);
+        timeoutId = null;
+        resolve(result);
+      }, delay);
+    });
+  };
+}
+
+/**
+ * Generate a random ID (for debugging or tracking)
+ * @param {number} length - Length of the ID (default: 8)
+ * @returns {string} Random ID
+ */
+export function getRandomId(length = 8) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  
-  // Fallback implementation
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
+  return result;
+}
+
+/**
+ * Sleep for a given duration (useful for async delays)
+ * @param {number} ms - Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
+export function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Check if a value is a plain object (not null, array, or function)
+ * @param {*} value - Value to check
+ * @returns {boolean}
+ */
+export function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+/**
+ * Safely stringify an object (handles circular references)
+ * @param {Object} obj - Object to stringify
+ * @returns {string} JSON string
+ */
+export function safeStringify(obj) {
+  const seen = new Set();
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return '[Circular]';
+      }
+      seen.add(value);
+    }
+    return value;
   });
 }
 
-/**
- * Debounce a function call
- * @param {Function} fn - Function to debounce
- * @param {number} delay - Delay in milliseconds
- * @returns {Function} Debounced function
- */
-export function debounce(fn, delay = 300) {
-  let timer = null;
-  return function(...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn.apply(this, args), delay);
-  };
-}
-
-/**
- * Throttle a function call
- * @param {Function} fn - Function to throttle
- * @param {number} limit - Limit in milliseconds
- * @returns {Function} Throttled function
- */
-export function throttle(fn, limit = 300) {
-  let inThrottle = false;
-  return function(...args) {
-    if (!inThrottle) {
-      fn.apply(this, args);
-      inThrottle = true;
-      setTimeout(() => inThrottle = false, limit);
-    }
-  };
-}
+// Default export with all functions for convenience
+export default {
+  safeExecute,
+  normalizeValue,
+  deepMerge,
+  memoize,
+  isBrowser,
+  isNode,
+  throttle,
+  debounce,
+  getRandomId,
+  sleep,
+  isPlainObject,
+  safeStringify,
+};
