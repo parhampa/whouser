@@ -1,344 +1,303 @@
-// src/signals/visual.js
+import { safeExecute, normalizeValue } from '../utils/helpers.js';
+
+// Cache for expensive signals within the same session
+const _cache = new Map();
 
 /**
- * Collect visual-related signals for fingerprinting
- * @param {Object} options - Configuration options
- * @param {number} options.timeout - Timeout in ms for each signal
+ * Clear visual signal cache (useful for testing)
+ */
+export function clearCache() {
+  _cache.clear();
+}
+
+/**
+ * Generate Canvas fingerprint with multiple layers for better accuracy
+ * @param {string} accuracy - 'fast' | 'balanced' | 'high'
+ * @returns {string} Hash or empty string on error
+ */
+function getCanvasFingerprint(accuracy = 'balanced') {
+  const cacheKey = `canvas_${accuracy}`;
+  if (_cache.has(cacheKey)) return _cache.get(cacheKey);
+
+  try {
+    if (typeof document === 'undefined' || !document.createElement) {
+      return '';
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    // Text rendering (always)
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#f60';
+    ctx.fillRect(125, 1, 62, 20);
+    ctx.fillStyle = '#069';
+    ctx.font = '11pt Arial';
+    ctx.fillText('Cwm fjordbank glyphs vext quiz, 😃', 2, 15);
+    ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+    ctx.font = '18pt Times New Roman';
+    ctx.fillText('Cwm fjordbank glyphs vext quiz, 😃', 4, 45);
+
+    // Gradients (only in balanced and high)
+    if (accuracy !== 'fast') {
+      const gradient = ctx.createLinearGradient(0, 50, 200, 100);
+      gradient.addColorStop(0, '#ff0000');
+      gradient.addColorStop(0.5, '#00ff00');
+      gradient.addColorStop(1, '#0000ff');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 60, 200, 30);
+    }
+
+    // Shapes (only in high)
+    if (accuracy === 'high') {
+      // Circle
+      ctx.beginPath();
+      ctx.arc(50, 100, 20, 0, Math.PI * 2, true);
+      ctx.fillStyle = '#ff9900';
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Rotated rectangle
+      ctx.save();
+      ctx.translate(120, 100);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = '#66ccff';
+      ctx.fillRect(-15, -15, 30, 30);
+      ctx.restore();
+
+      // Bezier curve
+      ctx.beginPath();
+      ctx.moveTo(180, 80);
+      ctx.bezierCurveTo(190, 70, 200, 90, 210, 80);
+      ctx.strokeStyle = '#ff0066';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    // Anti-aliasing detection (using a small text)
+    ctx.font = '9pt Arial';
+    ctx.fillStyle = '#000';
+    ctx.fillText('iiii', 5, 110);
+
+    // Get image data and hash it
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    // Simple hash (we'll use MurmurHash3 later, but for now return a string)
+    // We'll hash in the main fingerprint generation
+    const dataUrl = canvas.toDataURL();
+    _cache.set(cacheKey, dataUrl);
+    return dataUrl;
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
+ * Get WebGL fingerprint with vendor, renderer, and extensions
+ * @param {string} accuracy - 'fast' | 'balanced' | 'high'
+ * @returns {Object} WebGL info or empty object on error
+ */
+function getWebGLInfo(accuracy = 'balanced') {
+  const cacheKey = `webgl_${accuracy}`;
+  if (_cache.has(cacheKey)) return _cache.get(cacheKey);
+
+  try {
+    if (typeof document === 'undefined' || !document.createElement) {
+      return {};
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+
+    // Try WebGL2 first, fallback to WebGL1
+    let gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (!gl) return {};
+
+    const info = {
+      vendor: gl.getParameter(gl.VENDOR) || '',
+      renderer: gl.getParameter(gl.RENDERER) || '',
+      version: gl.getParameter(gl.VERSION) || '',
+      shadingLanguageVersion: gl.getParameter(gl.SHADING_LANGUAGE_VERSION) || '',
+      maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE) || 0,
+      maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS) || [0, 0],
+      extensions: [],
+      isWebGL2: !!gl.getParameter(gl.VERSION).includes('WebGL 2.0'),
+    };
+
+    // Get supported extensions (only in high mode, or limited in balanced)
+    const extensionList = gl.getSupportedExtensions() || [];
+    if (accuracy === 'high') {
+      info.extensions = extensionList;
+    } else if (accuracy === 'balanced') {
+      // Only get a subset (first 10) to save time
+      info.extensions = extensionList.slice(0, 10);
+    } else {
+      // Fast: only get a few key extensions
+      const keyExts = ['WEBGL_debug_renderer_info', 'WEBGL_compressed_texture_s3tc', 'OES_texture_float'];
+      info.extensions = extensionList.filter(ext => keyExts.includes(ext));
+    }
+
+    // Also capture a small rendering to detect differences
+    // (useful for GPU/driver variations)
+    if (accuracy !== 'fast') {
+      const gl2 = gl;
+      // Clear with a specific color
+      gl2.clearColor(0.2, 0.3, 0.4, 1.0);
+      gl2.clear(gl2.COLOR_BUFFER_BIT);
+      const pixels = new Uint8Array(4);
+      gl2.readPixels(0, 0, 1, 1, gl2.RGBA, gl2.UNSIGNED_BYTE, pixels);
+      info.pixel = Array.from(pixels);
+    }
+
+    _cache.set(cacheKey, info);
+    return info;
+  } catch (e) {
+    return {};
+  }
+}
+
+/**
+ * Generate Audio fingerprint using OfflineAudioContext
+ * @param {string} accuracy - 'fast' | 'balanced' | 'high'
+ * @returns {string} Hash or empty string on error
+ */
+function getAudioFingerprint(accuracy = 'balanced') {
+  const cacheKey = `audio_${accuracy}`;
+  if (_cache.has(cacheKey)) return _cache.get(cacheKey);
+
+  try {
+    if (typeof AudioContext === 'undefined' && typeof webkitOfflineAudioContext === 'undefined') {
+      return '';
+    }
+
+    // Use OfflineAudioContext
+    const AudioCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!AudioCtx) return '';
+
+    const context = new AudioCtx(1, 44100, 44100);
+    const bufferSize = accuracy === 'high' ? 44100 : (accuracy === 'balanced' ? 22050 : 11025);
+
+    // Create oscillator
+    const oscillator = context.createOscillator();
+    oscillator.type = 'sawtooth';
+    oscillator.frequency.value = 440;
+
+    // Create gain node
+    const gain = context.createGain();
+    gain.gain.value = 0.1;
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+
+    oscillator.start(0);
+    oscillator.stop(context.currentTime + 0.1);
+
+    // Render audio
+    return new Promise((resolve) => {
+      context.oncomplete = (event) => {
+        const renderedBuffer = event.renderedBuffer;
+        const channelData = renderedBuffer.getChannelData(0);
+        // Take a subset of samples (first 1000)
+        const samples = Array.from(channelData.slice(0, 1000));
+        // Create a string representation and hash it
+        const fingerprint = samples.map(v => Math.round(v * 1000)).join(',');
+        _cache.set(cacheKey, fingerprint);
+        resolve(fingerprint);
+      };
+      context.startRendering();
+    });
+  } catch (e) {
+    // Safari may throw, fallback to empty
+    return '';
+  }
+}
+
+/**
+ * Get screen resolution and color gamut
+ */
+function getScreenVisualInfo() {
+  if (typeof screen === 'undefined') {
+    return { width: 0, height: 0, availWidth: 0, availHeight: 0 };
+  }
+  return {
+    width: screen.width || 0,
+    height: screen.height || 0,
+    availWidth: screen.availWidth || 0,
+    availHeight: screen.availHeight || 0,
+    colorDepth: screen.colorDepth || 0,
+    pixelDepth: screen.pixelDepth || 0,
+    // Color gamut (newer API)
+    colorGamut: (typeof screen !== 'undefined' && screen.colorGamut) ? screen.colorGamut : 'unknown',
+  };
+}
+
+/**
+ * Get window inner dimensions (viewport)
+ */
+function getViewportInfo() {
+  if (typeof window === 'undefined') {
+    return { innerWidth: 0, innerHeight: 0, outerWidth: 0, outerHeight: 0 };
+  }
+  return {
+    innerWidth: window.innerWidth || 0,
+    innerHeight: window.innerHeight || 0,
+    outerWidth: window.outerWidth || 0,
+    outerHeight: window.outerHeight || 0,
+  };
+}
+
+/**
+ * Collect visual signals (the most expensive part)
+ * @param {string} accuracy - 'fast' | 'balanced' | 'high'
  * @returns {Promise<Object>} Visual signals
  */
-export async function getVisualSignals(options = {}) {
-  const timeout = options.timeout || 3000;
-
+export async function collect(accuracy = 'balanced') {
   const signals = {};
 
-  try {
-    // Canvas fingerprint
-    signals.canvas = safeExecute(() => getCanvasFingerprint(), {
-      hash: 'error',
-      data: null
-    });
+  // Always collect these (cheap)
+  signals.screen = safeExecute(getScreenVisualInfo, { width: 0, height: 0, availWidth: 0, availHeight: 0 });
+  signals.viewport = safeExecute(getViewportInfo, { innerWidth: 0, innerHeight: 0, outerWidth: 0, outerHeight: 0 });
 
-    // WebGL fingerprint
-    signals.webgl = safeExecute(() => getWebGLFingerprint(), {
-      vendor: 'error',
-      renderer: 'error',
-      hash: 'error'
-    });
+  // Canvas fingerprint: depends on accuracy
+  signals.canvas = safeExecute(() => getCanvasFingerprint(accuracy), '');
 
-    // Audio fingerprint
+  // WebGL: skip in fast mode
+  if (accuracy === 'fast') {
+    signals.webgl = {};
+  } else {
+    signals.webgl = safeExecute(() => getWebGLInfo(accuracy), {});
+  }
+
+  // Audio: skip in fast mode, run async in others
+  if (accuracy === 'fast') {
+    signals.audio = '';
+  } else {
+    // Audio is async, we need to await it properly
     try {
-      signals.audio = await Promise.race([
-        getAudioFingerprint(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Audio timeout')), timeout))
-      ]);
+      signals.audio = await getAudioFingerprint(accuracy);
     } catch (e) {
-      signals.audio = { error: 'timeout or unavailable' };
-    }
-
-    // Screen size & DPI
-    signals.screen = safeExecute(() => ({
-      width: window.screen.width,
-      height: window.screen.height,
-      availWidth: window.screen.availWidth,
-      availHeight: window.screen.availHeight,
-      colorDepth: window.screen.colorDepth,
-      pixelDepth: window.screen.pixelDepth,
-      devicePixelRatio: window.devicePixelRatio || 1,
-      innerWidth: window.innerWidth,
-      innerHeight: window.innerHeight,
-      outerWidth: window.outerWidth,
-      outerHeight: window.outerHeight
-    }), {});
-
-    // WebGL performance (optional, can be heavy)
-    signals.webglPerformance = safeExecute(() => getWebGLPerformance(), {
-      fps: 'unknown',
-      renderTime: 'unknown'
-    });
-
-    // Color depth and gamut
-    signals.color = safeExecute(() => ({
-      depth: window.screen.colorDepth,
-      pixelDepth: window.screen.pixelDepth,
-      gamut: window.matchMedia('(color-gamut: p3)').matches ? 'p3' : 'srgb',
-      hdr: window.matchMedia('(dynamic-range: high)').matches
-    }), {});
-
-    return signals;
-
-  } catch (error) {
-    console.error('Visual signals collection failed:', error);
-    return signals;
-  }
-}
-
-/**
- * Generate Canvas fingerprint using various text and shapes
- * @returns {Object} { hash, data }
- */
-function getCanvasFingerprint() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 128;
-  const ctx = canvas.getContext('2d');
-
-  // Draw text with different styles
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#f60';
-  ctx.fillRect(125, 1, 62, 20);
-  ctx.fillStyle = '#069';
-  ctx.font = '11pt Arial';
-  ctx.fillText('Whouser fingerprint', 2, 15);
-  ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
-  ctx.font = '18pt Times New Roman';
-  ctx.fillText('Canvas Text', 4, 45);
-
-  // Draw geometric shapes
-  ctx.beginPath();
-  ctx.arc(50, 70, 30, 0, Math.PI * 2);
-  ctx.fillStyle = '#3c3';
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.rect(180, 60, 40, 40);
-  ctx.fillStyle = '#c33';
-  ctx.fill();
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Draw lines and curves
-  ctx.beginPath();
-  ctx.moveTo(200, 20);
-  ctx.quadraticCurveTo(220, 5, 240, 20);
-  ctx.strokeStyle = '#09f';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  // Add some anti-aliasing noise
-  for (let i = 0; i < 20; i++) {
-    ctx.fillStyle = `rgba(${Math.random()*255}, ${Math.random()*255}, ${Math.random()*255}, 0.2)`;
-    ctx.fillRect(Math.random() * 256, Math.random() * 128, 2, 2);
-  }
-
-  // Get image data and generate hash
-  const imageData = ctx.getImageData(0, 0, 256, 128).data;
-  const hash = simpleHash(imageData);
-  
-  return {
-    hash,
-    data: Array.from(imageData.slice(0, 100)) // Only store small sample
-  };
-}
-
-/**
- * Generate WebGL fingerprint with renderer info and extensions
- * @returns {Object} { vendor, renderer, hash }
- */
-function getWebGLFingerprint() {
-  const canvas = document.createElement('canvas');
-  const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-  
-  if (!gl) {
-    return { vendor: 'unsupported', renderer: 'unsupported', hash: 'unsupported' };
-  }
-
-  const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-  let vendor = 'unknown';
-  let renderer = 'unknown';
-
-  if (debugInfo) {
-    vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-    renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-  }
-
-  // Collect extensions
-  const extensions = gl.getSupportedExtensions() || [];
-  const extensionHash = simpleHash(extensions.join(','));
-
-  // Get WebGL parameters
-  const parameters = {
-    maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
-    maxCubeMapTextureSize: gl.getParameter(gl.MAX_CUBE_MAP_TEXTURE_SIZE),
-    maxRenderbufferSize: gl.getParameter(gl.MAX_RENDERBUFFER_SIZE),
-    maxViewportDims: gl.getParameter(gl.MAX_VIEWPORT_DIMS),
-    maxVertexAttribs: gl.getParameter(gl.MAX_VERTEX_ATTRIBS),
-    maxVertexUniformVectors: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS),
-    maxFragmentUniformVectors: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS),
-    maxVaryingVectors: gl.getParameter(gl.MAX_VARYING_VECTORS),
-    maxCombinedTextureImageUnits: gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS),
-    aliasedLineWidthRange: gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE),
-    aliasedPointSizeRange: gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)
-  };
-
-  const paramHash = simpleHash(JSON.stringify(parameters));
-  const combinedHash = simpleHash(vendor + renderer + extensionHash + paramHash);
-
-  return {
-    vendor,
-    renderer,
-    extensions: extensions.slice(0, 20), // limit size
-    parameters,
-    hash: combinedHash
-  };
-}
-
-/**
- * Generate Audio fingerprint using oscillator
- * @returns {Promise<Object>} { hash, data }
- */
-function getAudioFingerprint() {
-  return new Promise((resolve, reject) => {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) {
-        reject(new Error('AudioContext not supported'));
-        return;
-      }
-
-      const context = new AudioContext();
-      const oscillator = context.createOscillator();
-      const analyser = context.createAnalyser();
-      const gain = context.createGain();
-      
-      oscillator.type = 'sawtooth';
-      oscillator.frequency.value = 440;
-      
-      gain.gain.value = 0.1; // low volume to avoid disturbing user
-      analyser.fftSize = 2048;
-      
-      oscillator.connect(analyser);
-      analyser.connect(gain);
-      gain.connect(context.destination);
-      
-      oscillator.start(0);
-      
-      // Collect audio data after a short delay
-      setTimeout(() => {
-        const dataArray = new Float32Array(analyser.frequencyBinCount);
-        analyser.getFloatFrequencyData(dataArray);
-        oscillator.stop(0);
-        context.close();
-        
-        // Generate hash from the audio data
-        const hash = simpleHash(Array.from(dataArray.slice(0, 200)));
-        resolve({
-          hash,
-          data: Array.from(dataArray.slice(0, 50)) // small sample
-        });
-      }, 100);
-      
-      // Cleanup on error
-      setTimeout(() => reject(new Error('Audio fingerprint timeout')), 2000);
-      
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-/**
- * Simple WebGL performance test (can be heavy, use with caution)
- * @returns {Object} { fps, renderTime }
- */
-function getWebGLPerformance() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
-  const gl = canvas.getContext('webgl');
-  
-  if (!gl) {
-    return { fps: 'unsupported', renderTime: 'unsupported' };
-  }
-
-  const start = performance.now();
-  let frames = 0;
-  const maxFrames = 30;
-  
-  // Simple rendering loop (synchronous)
-  for (let i = 0; i < maxFrames; i++) {
-    gl.clearColor(Math.random(), Math.random(), Math.random(), 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    
-    // Draw random triangles
-    const vertices = new Float32Array([
-      Math.random()*2-1, Math.random()*2-1,
-      Math.random()*2-1, Math.random()*2-1,
-      Math.random()*2-1, Math.random()*2-1
-    ]);
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-    
-    // Simple shader program
-    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(vertexShader, `
-      attribute vec2 position;
-      void main() { gl_Position = vec4(position, 0, 1); }
-    `);
-    gl.compileShader(vertexShader);
-    
-    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fragmentShader, `
-      void main() { gl_FragColor = vec4(1, 0, 0, 1); }
-    `);
-    gl.compileShader(fragmentShader);
-    
-    const program = gl.createProgram();
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-    gl.useProgram(program);
-    
-    const positionLoc = gl.getAttribLocation(program, 'position');
-    gl.enableVertexAttribArray(positionLoc);
-    gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    
-    frames++;
-  }
-  
-  const end = performance.now();
-  const totalTime = end - start;
-  
-  return {
-    fps: Math.round(frames / (totalTime / 1000)),
-    renderTime: Math.round(totalTime / frames)
-  };
-}
-
-/**
- * Simple hash function for fingerprint data
- * @param {any} data - Data to hash (string, array, or object)
- * @returns {string} Hex hash string
- */
-function simpleHash(data) {
-  let str = data;
-  if (typeof data !== 'string') {
-    try {
-      str = JSON.stringify(data);
-    } catch (e) {
-      str = String(data);
+      signals.audio = '';
     }
   }
-  
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  
-  return (hash >>> 0).toString(16).padStart(8, '0');
+
+  // Additional visual signals (cheap)
+  signals.devicePixelRatio = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  signals.colorDepth = typeof screen !== 'undefined' ? screen.colorDepth || 0 : 0;
+
+  return signals;
 }
 
-/**
- * Safe execution wrapper to prevent crashes
- */
-function safeExecute(fn, fallback = null) {
-  try {
-    return fn();
-  } catch (e) {
-    return fallback;
-  }
-}
+// Export individual functions for testing
+export {
+  getCanvasFingerprint,
+  getWebGLInfo,
+  getAudioFingerprint,
+  getScreenVisualInfo,
+  getViewportInfo,
+  clearCache,
+};
