@@ -1,163 +1,112 @@
-// src/utils/hash.js
-
 /**
- * Hash signals into a consistent string using a simple but effective algorithm
- * @param {any} signals - Signals to hash (object, array, string, or primitive)
- * @param {Object} options - Hash options
- * @param {string} options.salt - Optional salt for hash
- * @param {number} options.maxLength - Maximum length of hash string (default: 16)
- * @returns {string} Hex hash string
+ * MurmurHash3 implementation (x86 32-bit)
+ * Fast non-cryptographic hash with good distribution
+ * Based on original MurmurHash3 by Austin Appleby
  */
-export function hashSignals(signals, options = {}) {
-  const salt = options.salt || '';
-  const maxLength = options.maxLength || 16;
 
-  // Convert signals to a normalized string
-  const normalized = normalizeSignals(signals);
-  
-  // Add salt
-  const data = normalized + salt;
-  
-  // Generate hash using a simple but effective algorithm
-  const hash = murmurHash3(data);
-  
-  // Return as hex string with fixed length
-  return hash.toString(16).padStart(8, '0').slice(0, maxLength);
-}
-
-/**
- * Normalize signals to a consistent string representation
- * @param {any} signals - Signals to normalize
- * @returns {string} Normalized string
- */
-function normalizeSignals(signals) {
-  if (signals === null || signals === undefined) {
-    return 'null';
+export function murmurHash3(key, seed = 0) {
+  if (typeof key === 'string') {
+    // Convert string to bytes (UTF-8)
+    const bytes = [];
+    for (let i = 0; i < key.length; i++) {
+      const charCode = key.charCodeAt(i);
+      if (charCode < 0x80) {
+        bytes.push(charCode);
+      } else if (charCode < 0x800) {
+        bytes.push(0xc0 | (charCode >> 6), 0x80 | (charCode & 0x3f));
+      } else if (charCode < 0xd800 || charCode >= 0xe000) {
+        bytes.push(0xe0 | (charCode >> 12), 0x80 | ((charCode >> 6) & 0x3f), 0x80 | (charCode & 0x3f));
+      } else {
+        // UTF-16 surrogate pair
+        const nextChar = key.charCodeAt(i + 1);
+        if (nextChar >= 0xdc00 && nextChar <= 0xdfff) {
+          const codePoint = ((charCode & 0x3ff) << 10) + (nextChar & 0x3ff) + 0x10000;
+          bytes.push(
+            0xf0 | (codePoint >> 18),
+            0x80 | ((codePoint >> 12) & 0x3f),
+            0x80 | ((codePoint >> 6) & 0x3f),
+            0x80 | (codePoint & 0x3f)
+          );
+          i++; // Skip surrogate pair
+        } else {
+          bytes.push(0xef, 0xbf, 0xbd); // Replacement character
+        }
+      }
+    }
+    key = bytes;
   }
 
-  if (typeof signals === 'string') {
-    return signals;
-  }
+  // Ensure key is Uint8Array for consistent processing
+  const data = key instanceof Uint8Array ? key : new Uint8Array(key);
+  const len = data.length;
+  const nblocks = Math.floor(len / 4);
 
-  if (typeof signals === 'number' || typeof signals === 'boolean') {
-    return String(signals);
-  }
-
-  if (Array.isArray(signals)) {
-    return signals.map(item => normalizeSignals(item)).join('|');
-  }
-
-  if (typeof signals === 'object') {
-    // Sort keys to ensure consistent order
-    const keys = Object.keys(signals).sort();
-    const parts = keys.map(key => {
-      const value = normalizeSignals(signals[key]);
-      return `${key}:${value}`;
-    });
-    return `{${parts.join(',')}}`;
-  }
-
-  return String(signals);
-}
-
-/**
- * Simple but effective hash function (MurmurHash3-inspired)
- * @param {string} str - Input string
- * @param {number} seed - Seed value (default: 0)
- * @returns {number} 32-bit unsigned integer
- */
-function murmurHash3(str, seed = 0) {
   let h1 = seed;
+
   const c1 = 0xcc9e2d51;
   const c2 = 0x1b873593;
-  const len = str.length;
-  const blocks = Math.floor(len / 4);
 
-  // Process 4-byte blocks
-  for (let i = 0; i < blocks; i++) {
-    let k1 = 0;
-    for (let j = 0; j < 4; j++) {
-      const charCode = str.charCodeAt(i * 4 + j);
-      k1 |= (charCode & 0xff) << (j * 8);
-    }
+  // Body
+  for (let i = 0; i < nblocks; i++) {
+    const offset = i * 4;
+    let k1 = data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
 
-    k1 = mul32(k1, c1);
-    k1 = rotl32(k1, 15);
-    k1 = mul32(k1, c2);
+    k1 = Math.imul(k1, c1);
+    k1 = ((k1 << 15) | (k1 >>> 17)) & 0xffffffff;
+    k1 = Math.imul(k1, c2);
 
     h1 ^= k1;
-    h1 = rotl32(h1, 13);
-    h1 = mul32(h1, 5) + 0xe6546b64;
+    h1 = ((h1 << 13) | (h1 >>> 19)) & 0xffffffff;
+    h1 = Math.imul(h1, 5) + 0xe6546b64;
+    h1 &= 0xffffffff;
   }
 
-  // Process remaining bytes
+  // Tail
+  const tailOffset = nblocks * 4;
   let k1 = 0;
-  const tail = len % 4;
-  for (let i = 0; i < tail; i++) {
-    const charCode = str.charCodeAt(blocks * 4 + i);
-    k1 ^= (charCode & 0xff) << (i * 8);
-  }
-  if (tail > 0) {
-    k1 = mul32(k1, c1);
-    k1 = rotl32(k1, 15);
-    k1 = mul32(k1, c2);
+  const remaining = len - tailOffset;
+
+  if (remaining > 0) {
+    if (remaining >= 3) k1 ^= data[tailOffset + 2] << 16;
+    if (remaining >= 2) k1 ^= data[tailOffset + 1] << 8;
+    if (remaining >= 1) k1 ^= data[tailOffset];
+    k1 = Math.imul(k1, c1);
+    k1 = ((k1 << 15) | (k1 >>> 17)) & 0xffffffff;
+    k1 = Math.imul(k1, c2);
     h1 ^= k1;
   }
 
   // Finalization
   h1 ^= len;
-  h1 = fmix32(h1);
+  h1 ^= h1 >>> 16;
+  h1 = Math.imul(h1, 0x85ebca6b) & 0xffffffff;
+  h1 ^= h1 >>> 13;
+  h1 = Math.imul(h1, 0xc2b2ae35) & 0xffffffff;
+  h1 ^= h1 >>> 16;
 
-  return h1 >>> 0; // Convert to unsigned 32-bit
+  // Convert to hex string (8 characters)
+  const hex = (h1 >>> 0).toString(16).padStart(8, '0');
+  return hex;
 }
 
 /**
- * 32-bit multiplication with proper overflow handling
+ * Legacy alias for backward compatibility
+ * @deprecated Use murmurHash3 directly
  */
-function mul32(a, b) {
-  return (a * b) >>> 0;
-}
+export const MurmurHash3 = murmurHash3;
 
 /**
- * 32-bit left rotation
+ * Hash a signals object with optional seed
+ * Useful for generating a fingerprint from multiple signals
  */
-function rotl32(x, r) {
-  return ((x << r) | (x >>> (32 - r))) >>> 0;
+export function hashSignals(signals, seed = 0) {
+  const json = JSON.stringify(signals);
+  return murmurHash3(json, seed);
 }
 
-/**
- * Finalization mix function
- */
-function fmix32(h) {
-  h ^= h >>> 16;
-  h = mul32(h, 0x85ebca6b);
-  h ^= h >>> 13;
-  h = mul32(h, 0xc2b2ae35);
-  h ^= h >>> 16;
-  return h >>> 0;
-}
-
-/**
- * Alternative: simple hash for quick use (less collision-resistant)
- * @param {any} data - Data to hash
- * @returns {string} Simple hex hash
- */
-export function simpleHash(data) {
-  let str = data;
-  if (typeof data !== 'string') {
-    try {
-      str = JSON.stringify(data);
-    } catch (e) {
-      str = String(data);
-    }
-  }
-
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-
-  return (hash >>> 0).toString(16).padStart(8, '0');
-}
+// Default export for convenience
+export default {
+  murmurHash3,
+  MurmurHash3,
+  hashSignals,
+};
